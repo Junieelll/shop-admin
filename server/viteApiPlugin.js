@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import productsHandler from '../api/products.js'
 import collectionsHandler from '../api/collections.js'
 import uploadHandler from '../api/upload.js'
+import updateEmailHandler from '../api/update-email.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const envLocalPath = path.resolve(__dirname, '../.env.local')
@@ -38,7 +39,7 @@ export function viteApiPlugin() {
           pathname = pathname.replace('/api/db/', '/api/')
         }
 
-        if (pathname !== '/api/products' && pathname !== '/api/collections' && pathname !== '/api/upload') {
+        if (pathname !== '/api/products' && pathname !== '/api/collections' && pathname !== '/api/upload' && pathname !== '/api/update-email') {
           return next()
         }
 
@@ -91,6 +92,10 @@ export function viteApiPlugin() {
 
           if (pathname === '/api/upload') {
             return await uploadHandler(vercelReq, vercelRes)
+          }
+
+          if (pathname === '/api/update-email') {
+            return await updateEmailHandler(vercelReq, vercelRes)
           }
 
           next()

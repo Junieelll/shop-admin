@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
 import Sidebar from '../components/Sidebar'
 import CollectionsHeader from '../components/collections/CollectionsHeader'
 import CollectionsToolbar from '../components/collections/CollectionsToolbar'
@@ -79,8 +79,7 @@ export default function Collections() {
   }, [searchQuery])
 
   // Load collections & products
-  const loadData = async () => {
-    setIsLoading(true)
+  const loadData = useCallback(async () => {
     try {
       const [colRes, prodRes] = await Promise.all([
         fetchCollectionsFromDb(selectedStore),
@@ -103,11 +102,23 @@ export default function Collections() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [selectedStore, showToast])
 
   useEffect(() => {
-    loadData()
-  }, [selectedStore])
+    let ignore = false
+
+    const run = async () => {
+      if (!ignore) {
+        await loadData()
+      }
+    }
+
+    run()
+
+    return () => {
+      ignore = true
+    }
+  }, [loadData])
 
   // Filtered & Sorted collections
   const filteredCollections = useMemo(() => {
@@ -247,7 +258,10 @@ export default function Collections() {
       {/* ── SIDEBAR ── */}
       <Sidebar
         selectedStore={selectedStore}
-        onSelectStore={setSelectedStore}
+        onSelectStore={(store) => {
+          setSelectedStore(store)
+          setIsLoading(true)
+        }}
         isDark={isDark}
         onToggleDark={() => setIsDark(!isDark)}
         isDbConnected={isDbConnected}

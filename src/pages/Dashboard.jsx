@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
 import Sidebar from '../components/Sidebar'
 import ProductToolbar from '../components/dashboard/ProductToolbar'
 import ProductGrid from '../components/dashboard/ProductGrid'
@@ -44,8 +44,15 @@ export default function Dashboard() {
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
-  const [isSearching, setIsSearching] = useState(false)
-  const [activeFilter, setActiveFilter] = useState('all')
+  const isSearching = searchQuery !== debouncedSearchQuery
+  const colParam = searchParams.get('col')
+  const [activeFilter, setActiveFilter] = useState(() => (colParam ? Number(colParam) : 'all'))
+  const [prevColParam, setPrevColParam] = useState(colParam)
+
+  if (colParam !== prevColParam) {
+    setPrevColParam(colParam)
+    setActiveFilter(colParam ? Number(colParam) : 'all')
+  }
 
   // Data from live Neon database
   const [products, setProducts] = useState([])
@@ -82,28 +89,44 @@ export default function Dashboard() {
   const [isSyncing, setIsSyncing] = useState(false)
 
   // Fetch live products & collections from Neon Database
-  const loadProducts = async () => {
-    setIsSyncing(true)
-    const [prodRes, colRes] = await Promise.all([
-      fetchProductsFromDb(selectedStore),
-      fetchCollectionsFromDb(selectedStore)
-    ])
+  const loadProducts = useCallback(async () => {
+    try {
+      const [prodRes, colRes] = await Promise.all([
+        fetchProductsFromDb(selectedStore),
+        fetchCollectionsFromDb(selectedStore)
+      ])
 
-    if (prodRes.success && prodRes.data) {
-      setProducts(prodRes.data)
-      setIsDbConnected(true)
+      if (prodRes.success && prodRes.data) {
+        setProducts(prodRes.data)
+        setIsDbConnected(true)
+      }
+      if (colRes.success && colRes.data) {
+        setCollections(colRes.data)
+      }
+    } catch (err) {
+      console.error('Error loading products & collections:', err)
+      showToast('Database connection error', 'error')
+    } finally {
+      setIsSyncing(false)
+      setIsLoading(false)
     }
-    if (colRes.success && colRes.data) {
-      setCollections(colRes.data)
-    }
-    setIsSyncing(false)
-    setIsLoading(false)
-  }
+  }, [selectedStore, showToast])
 
   useEffect(() => {
-    setIsLoading(true)
-    loadProducts()
-  }, [selectedStore])
+    let ignore = false
+
+    const run = async () => {
+      if (!ignore) {
+        await loadProducts()
+      }
+    }
+
+    run()
+
+    return () => {
+      ignore = true
+    }
+  }, [loadProducts])
 
   // Sync theme
   useEffect(() => {
@@ -129,23 +152,12 @@ export default function Dashboard() {
 
   // Debounce search query (300ms)
   useEffect(() => {
-    if (searchQuery !== debouncedSearchQuery) {
-      setIsSearching(true)
-    }
     const timer = setTimeout(() => {
       setDebouncedSearchQuery(searchQuery)
-      setIsSearching(false)
     }, 300)
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Sync collection filter from URL query params
-  useEffect(() => {
-    const colParam = searchParams.get('col')
-    if (colParam) {
-      setActiveFilter(Number(colParam))
-    }
-  }, [searchParams])
 
   // Filter products by selected store
   const storeProducts = useMemo(() => {
@@ -398,7 +410,11 @@ export default function Dashboard() {
       {/* ── SIDEBAR ── */}
       <Sidebar
         selectedStore={selectedStore}
-        onSelectStore={(store) => { setSelectedStore(store); setActiveFilter('all') }}
+        onSelectStore={(store) => {
+          setSelectedStore(store)
+          setActiveFilter('all')
+          setIsLoading(true)
+        }}
         isDark={isDark}
         onToggleDark={() => setIsDark(!isDark)}
         isDbConnected={isDbConnected}

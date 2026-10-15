@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
 import Sidebar from '../components/Sidebar'
 import ProductCard from '../components/dashboard/ProductCard'
 import ProductTable from '../components/dashboard/ProductTable'
@@ -88,8 +88,7 @@ export default function CollectionProducts() {
   })
 
   // Load collection and products
-  const loadData = async () => {
-    setIsLoading(true)
+  const loadData = useCallback(async () => {
     try {
       const [colRes, prodRes] = await Promise.all([
         fetchCollectionsFromDb(selectedStore),
@@ -112,11 +111,23 @@ export default function CollectionProducts() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [id, selectedStore, showToast])
 
   useEffect(() => {
-    loadData()
-  }, [id, selectedStore])
+    let ignore = false
+
+    const run = async () => {
+      if (!ignore) {
+        await loadData()
+      }
+    }
+
+    run()
+
+    return () => {
+      ignore = true
+    }
+  }, [loadData])
 
   // Products belonging to this collection
   const collectionProducts = useMemo(() => {

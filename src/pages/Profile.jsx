@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/useAuth'
-import { useToast } from '../context/ToastContext'
+import { useToast } from '../context/useToast'
 import { authClient } from '../lib/auth'
 import Sidebar from '../components/Sidebar'
 import { fetchProductsFromDb, fetchCollectionsFromDb } from '../lib/api'
@@ -32,9 +32,9 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState('profile')
 
   // Profile Form State
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [image, setImage] = useState('')
+  const [name, setName] = useState(() => user?.name || '')
+  const [email, setEmail] = useState(() => user?.email || '')
+  const [image, setImage] = useState(() => user?.image || '')
   const [isUploading, setIsUploading] = useState(false)
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [showUrlInput, setShowUrlInput] = useState(false)
@@ -51,14 +51,7 @@ export default function Profile() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
 
-  // Initialize form with current user info
-  useEffect(() => {
-    if (user) {
-      setName(user.name || '')
-      setEmail(user.email || '')
-      setImage(user.image || '')
-    }
-  }, [user])
+
 
   // Sync theme with document and localStorage
   useEffect(() => {
@@ -191,14 +184,19 @@ export default function Profile() {
         throw new Error(updateResult.error.message || 'Failed to update profile info')
       }
 
-      const emailChanged = email.trim().toLowerCase() !== (user?.email || '').toLowerCase()
-      if (emailChanged && authClient.changeEmail) {
-        const emailRes = await authClient.changeEmail({
-          newEmail: email.trim().toLowerCase(),
-          callbackURL: window.location.origin + '/profile'
+      // Update email directly via DB if it changed
+      // (authClient.changeEmail is disabled on Neon Auth managed instances)
+      const trimmedEmail = email.trim().toLowerCase()
+      const emailChanged = trimmedEmail !== (user?.email || '').toLowerCase()
+      if (emailChanged && user?.id) {
+        const emailRes = await fetch('/api/update-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, newEmail: trimmedEmail })
         })
-        if (emailRes?.error) {
-          throw new Error(emailRes.error.message || 'Failed to update email address')
+        const emailData = await emailRes.json()
+        if (!emailRes.ok) {
+          throw new Error(emailData.error || 'Failed to update email address')
         }
       }
 
@@ -238,6 +236,20 @@ export default function Profile() {
       return
     }
 
+    const getFriendlyErrorMessage = (errorObj) => {
+      const rawMsg = errorObj?.message || ''
+      const code = errorObj?.code || ''
+      const isWrongPassword =
+        rawMsg.toLowerCase().includes('invalid email or password') ||
+        rawMsg.toLowerCase().includes('invalid password') ||
+        code === 'INVALID_EMAIL_OR_PASSWORD' ||
+        code === 'INVALID_PASSWORD'
+
+      return isWrongPassword
+        ? 'Incorrect current password. Please check and try again.'
+        : (rawMsg || 'Failed to change password. Please verify your current password.')
+    }
+
     setIsUpdatingPassword(true)
     try {
       const res = await authClient.changePassword({
@@ -247,7 +259,7 @@ export default function Profile() {
       })
 
       if (res?.error) {
-        throw new Error(res.error.message || 'Failed to change password. Please verify current password.')
+        throw new Error(getFriendlyErrorMessage(res.error))
       }
 
       showToast('Password updated successfully! Use your new password on your next login.', 'success')
@@ -256,7 +268,7 @@ export default function Profile() {
       setConfirmPassword('')
     } catch (err) {
       console.error('Change password error:', err)
-      showToast(err.message || 'Failed to change password. Please verify your current password.', 'error')
+      showToast(getFriendlyErrorMessage(err), 'error')
     } finally {
       setIsUpdatingPassword(false)
     }
@@ -569,8 +581,8 @@ export default function Profile() {
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full px-4 py-3 text-sm rounded-xl bg-neutral-50 dark:bg-neutral-800/80 text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-700 focus:border-black dark:focus:border-white outline-none transition-all"
                       />
-                      <p className="text-[11px] text-neutral-400 mt-1.5 pl-0.5">
-                        Used for authentication, password recovery, and store notifications.
+                      <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1.5 pl-0.5">
+                        Used for login and password recovery. Changes apply immediately.
                       </p>
                     </div>
 

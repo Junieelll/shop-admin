@@ -102,17 +102,17 @@ export default function CollectionModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-          className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-neutral-200 dark:border-neutral-800 my-8 max-h-[90vh] overflow-y-auto"
+          className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col max-h-[90vh]"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
+          {/* Header — sticky, never scrolls */}
+          <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-neutral-100 dark:border-neutral-800 shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 flex items-center justify-center">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
@@ -132,7 +132,7 @@ export default function CollectionModal({
             </button>
           </div>
 
-          <form onSubmit={onSubmit} className="space-y-4 pt-4">
+          <form onSubmit={onSubmit} className="flex flex-col flex-1 overflow-hidden"><div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                 Collection Name *
@@ -243,8 +243,8 @@ export default function CollectionModal({
               )}
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+            </div>{/* Footer Buttons — sticky, never scrolls */}
+            <div className="flex items-center justify-end gap-2.5 px-6 py-4 border-t border-neutral-100 dark:border-neutral-800 shrink-0">
               <button
                 type="button"
                 onClick={onClose}

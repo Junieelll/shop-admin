@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useToast } from '../../context/ToastContext'
+import { useToast } from '../../context/useToast'
 import CustomDropdown from '../common/CustomDropdown'
 
 const AVAILABLE_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'Free Size']
@@ -85,13 +85,6 @@ export default function ProductModal({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const readFileAsDataUrl = (file) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = (ev) => resolve(ev.target.result)
-      reader.readAsDataURL(file)
-    })
-  }
 
   const handleAddCustomUrl = () => {
     if (!customUrl.trim()) return
@@ -152,17 +145,17 @@ export default function ProductModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-          className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-3xl p-6 sm:p-8 shadow-2xl border border-neutral-200 dark:border-neutral-800 my-8 max-h-[90vh] overflow-y-auto"
+          className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col max-h-[90vh]"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-neutral-800">
+          {/* Header — sticky, never scrolls */}
+          <div className="flex items-center justify-between px-6 sm:px-8 pt-6 pb-4 border-b border-neutral-100 dark:border-neutral-800 shrink-0">
             <div>
               <h2 className="text-lg font-bold text-neutral-900 dark:text-white m-0">
                 {editingProduct ? 'Edit Product' : 'Add New Product'}
@@ -180,7 +173,7 @@ export default function ProductModal({
             </button>
           </div>
 
-          <form onSubmit={onSave} className="space-y-6 pt-5">
+          <form onSubmit={onSave} className="flex flex-col flex-1 overflow-hidden"><div className="flex-1 overflow-y-auto px-6 sm:px-8 py-5 space-y-6">
             {/* Title & Price */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -550,8 +543,8 @@ export default function ProductModal({
               />
             </div>
 
-            {/* Footer Buttons */}
-            <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+            </div>{/* Footer Buttons — sticky, never scrolls */}
+            <div className="flex items-center justify-end gap-2.5 px-6 sm:px-8 py-4 border-t border-neutral-100 dark:border-neutral-800 shrink-0">
               <button
                 type="button"
                 onClick={onClose}

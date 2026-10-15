@@ -1,6 +1,6 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthProvider'
-import { ToastProvider } from './context/ToastContext'
+import { ToastProvider } from './context/ToastProvider'
 import ProtectedRoute from './components/ProtectedRoute'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
