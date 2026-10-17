@@ -102,6 +102,35 @@ export default function Profile() {
 
   const passwordStrength = getPasswordStrength(newPassword)
 
+  // Downscale image to a crisp, lightweight square avatar (320x320)
+  const processAvatarImage = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          const size = 320
+          canvas.width = size
+          canvas.height = size
+          const ctx = canvas.getContext('2d')
+
+          // Crop center square
+          const minSide = Math.min(img.width, img.height)
+          const sx = (img.width - minSide) / 2
+          const sy = (img.height - minSide) / 2
+
+          ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size)
+          resolve(canvas.toDataURL('image/jpeg', 0.88))
+        }
+        img.onerror = reject
+        img.src = e.target.result
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
+
   // Handle avatar file selection / drag-and-drop
   const handleAvatarFile = async (file) => {
     if (!file) return
@@ -109,29 +138,24 @@ export default function Profile() {
       showToast('Please select a valid image file (JPEG, PNG, WEBP).', 'error')
       return
     }
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('Image size exceeds 5MB limit.', 'error')
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Image size exceeds 10MB limit.', 'error')
       return
     }
 
     setIsUploading(true)
     try {
-      const base64Data = await new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result)
-        reader.onerror = reject
-        reader.readAsDataURL(file)
-      })
+      const compressedDataUrl = await processAvatarImage(file)
 
-      let finalUrl = base64Data
+      let finalUrl = compressedDataUrl
       try {
         const res = await fetch('/api/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            filename: `avatar_${Date.now()}_${file.name}`,
-            fileData: base64Data,
-            contentType: file.type || 'image/jpeg'
+            filename: `avatar_${Date.now()}.jpg`,
+            fileData: compressedDataUrl,
+            contentType: 'image/jpeg'
           })
         })
         if (res.ok) {
@@ -139,14 +163,31 @@ export default function Profile() {
           if (data.url) finalUrl = data.url
         }
       } catch {
-        // Fallback to local base64 data url
+        // Fallback to optimized compressed data url
       }
 
+      // Update state and active user avatar immediately
       setImage(finalUrl)
-      showToast('Avatar image loaded! Click "Save Changes" to apply.', 'success')
+      updateLocalUser({ image: finalUrl })
+
+      // Persist directly to database if user.id is available
+      if (user?.id) {
+        try {
+          await fetch('/api/update-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, name, image: finalUrl })
+          })
+        } catch (dbErr) {
+          console.warn('Direct DB avatar save note:', dbErr)
+        }
+        authClient.updateUser({ image: finalUrl }).catch(() => {})
+      }
+
+      showToast('Profile photo updated successfully!', 'success')
     } catch (err) {
       console.error('Avatar upload error:', err)
-      showToast('Failed to load image file.', 'error')
+      showToast('Failed to process image file.', 'error')
     } finally {
       setIsUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -159,6 +200,20 @@ export default function Profile() {
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleAvatarFile(e.dataTransfer.files[0])
     }
+  }
+
+  const handleRemovePhoto = async () => {
+    setImage('')
+    updateLocalUser({ image: null })
+    if (user?.id) {
+      fetch('/api/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, name, image: null })
+      }).catch(() => {})
+      authClient.updateUser({ image: null }).catch(() => {})
+    }
+    showToast('Profile photo removed.', 'success')
   }
 
   // Save Name, Email, and Avatar Picture
@@ -175,17 +230,33 @@ export default function Profile() {
 
     setIsSavingProfile(true)
     try {
+      // 1. Direct database update for guaranteed persistence
+      if (user?.id) {
+        const profileRes = await fetch('/api/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            name: name.trim(),
+            image: image || null
+          })
+        })
+        if (!profileRes.ok) {
+          const profileData = await profileRes.json()
+          console.warn('Profile DB update note:', profileData.error)
+        }
+      }
+
+      // 2. AuthClient update
       const updateResult = await authClient.updateUser({
         name: name.trim(),
         image: image || null
       })
-
       if (updateResult?.error) {
-        throw new Error(updateResult.error.message || 'Failed to update profile info')
+        console.warn('authClient.updateUser note:', updateResult.error)
       }
 
-      // Update email directly via DB if it changed
-      // (authClient.changeEmail is disabled on Neon Auth managed instances)
+      // 3. Email update if changed
       const trimmedEmail = email.trim().toLowerCase()
       const emailChanged = trimmedEmail !== (user?.email || '').toLowerCase()
       if (emailChanged && user?.id) {
@@ -478,7 +549,7 @@ export default function Profile() {
                         {image && (
                           <button
                             type="button"
-                            onClick={() => setImage('')}
+                            onClick={handleRemovePhoto}
                             className="px-3.5 py-2.5 rounded-xl border border-red-200 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-semibold transition-colors cursor-pointer"
                           >
                             Remove

@@ -7,6 +7,7 @@ import ProductCard from '../components/dashboard/ProductCard'
 import ProductTable from '../components/dashboard/ProductTable'
 import ProductModal from '../components/dashboard/ProductModal'
 import DeleteProductModal from '../components/dashboard/DeleteProductModal'
+import Pagination from '../components/common/Pagination'
 import {
   fetchCollectionsFromDb,
   fetchProductsFromDb,
@@ -143,6 +144,24 @@ export default function CollectionProducts() {
       (p.description && p.description.toLowerCase().includes(q))
     )
   }, [collectionProducts, searchQuery])
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(12)
+  const [prevFilterKey, setPrevFilterKey] = useState(() => `${id}-${selectedStore}-${searchQuery}`)
+
+  // Reset pagination on filter or search changes during render (avoids setState in effect)
+  const currentFilterKey = `${id}-${selectedStore}-${searchQuery}`
+  if (prevFilterKey !== currentFilterKey) {
+    setPrevFilterKey(currentFilterKey)
+    setCurrentPage(1)
+  }
+
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage) || 1
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage
+    return filteredProducts.slice(start, start + itemsPerPage)
+  }, [filteredProducts, currentPage, itemsPerPage])
 
   // Available products in store that are NOT yet in this collection
   const unassignedProducts = useMemo(() => {
@@ -370,6 +389,7 @@ export default function CollectionProducts() {
         onCloseMobile={() => setIsOpenMobile(false)}
         productsCount={allProducts.filter(p => p.store_id === selectedStore).length}
         collectionsCount={collections.filter(c => c.store_id === selectedStore).length}
+        onStartTour={() => navigate('/?tour=1')}
       />
 
       {/* ── MAIN CONTENT (OFFSET FOR SIDEBAR ON DESKTOP) ── */}
@@ -570,9 +590,9 @@ export default function CollectionProducts() {
 
           {/* Product Items Display */}
           {isLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {[1, 2, 3, 4].map(i => (
-                <div key={i} className="aspect-4/5 rounded-3xl bg-neutral-100 dark:bg-neutral-800/50 animate-pulse" />
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                <div key={i} className="aspect-4/5 rounded-2xl sm:rounded-3xl bg-neutral-100 dark:bg-neutral-800/50 animate-pulse border border-neutral-200/60 dark:border-neutral-800" />
               ))}
             </div>
           ) : filteredProducts.length === 0 ? (
@@ -610,9 +630,9 @@ export default function CollectionProducts() {
               )}
             </div>
           ) : viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
               <AnimatePresence mode="popLayout">
-                {filteredProducts.map((product, index) => (
+                {paginatedProducts.map((product, index) => (
                   <div key={product.id} className="relative group/wrapper">
                     <ProductCard
                       product={product}
@@ -627,7 +647,7 @@ export default function CollectionProducts() {
                     <button
                       type="button"
                       onClick={() => handleRemoveFromCollection(product.id, product.name)}
-                      className="absolute top-3 left-3 z-10 px-2 py-1 rounded-full text-[10px] font-bold bg-neutral-900/80 hover:bg-red-600 text-white backdrop-blur-md opacity-0 group-hover/wrapper:opacity-100 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
+                      className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-bold bg-neutral-900/80 hover:bg-red-600 text-white backdrop-blur-md opacity-0 group-hover/wrapper:opacity-100 transition-all cursor-pointer flex items-center gap-1 shadow-sm"
                       title="Unlink from this collection"
                     >
                       <span>✕</span>
@@ -639,7 +659,7 @@ export default function CollectionProducts() {
             </div>
           ) : (
             <ProductTable
-              products={filteredProducts}
+              products={isLoading ? [] : paginatedProducts}
               isLoading={isLoading}
               selectedStore={selectedStore}
               searchQuery={searchQuery}
@@ -647,6 +667,21 @@ export default function CollectionProducts() {
               onEdit={handleOpenEditModal}
               onDelete={setProductToDelete}
               onOpenAddModal={handleOpenAddModal}
+            />
+          )}
+
+          {/* Pagination */}
+          {!isLoading && filteredProducts.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredProducts.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={(page) => {
+                setCurrentPage(page)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              onItemsPerPageChange={setItemsPerPage}
             />
           )}
 
@@ -660,13 +695,13 @@ export default function CollectionProducts() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+            className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-black/60 backdrop-blur-xs"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl p-6 shadow-2xl border border-neutral-200 dark:border-neutral-800 max-h-[85vh] flex flex-col"
+              className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl border border-neutral-200 dark:border-neutral-800 max-h-[calc(100dvh-1.25rem)] sm:max-h-[85vh] flex flex-col overflow-hidden"
             >
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800 shrink-0">
                 <div>
@@ -680,7 +715,7 @@ export default function CollectionProducts() {
                 <button
                   type="button"
                   onClick={() => setIsAddPickerOpen(false)}
-                  className="p-1 rounded-lg text-neutral-400 hover:text-black dark:hover:text-white"
+                  className="p-1 rounded-lg text-neutral-400 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   ✕
                 </button>
@@ -698,7 +733,7 @@ export default function CollectionProducts() {
               </div>
 
               {/* List of unassigned products */}
-              <div className="flex-1 overflow-y-auto space-y-2 py-2 pr-1">
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-2 py-2 pr-1">
                 {unassignedProducts.length === 0 ? (
                   <p className="text-xs text-center text-neutral-400 py-8">
                     {pickerSearch

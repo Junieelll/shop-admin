@@ -12,6 +12,14 @@ function getPool() {
 }
 
 export default async function handler(req, res) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   const db = getPool()
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
   const storeId = url.searchParams.get('store') || 'selyn'

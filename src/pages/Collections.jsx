@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '../context/useToast'
 import Sidebar from '../components/Sidebar'
@@ -16,6 +17,7 @@ import {
 } from '../lib/api'
 
 export default function Collections() {
+  const navigate = useNavigate()
   const { showToast } = useToast()
 
   // Theme
@@ -269,6 +271,7 @@ export default function Collections() {
         onCloseMobile={() => setIsOpenMobile(false)}
         productsCount={products.filter(p => p.store_id === selectedStore).length}
         collectionsCount={collections.length}
+        onStartTour={() => navigate('/?tour=1')}
       />
 
       {/* ── MAIN CONTENT (OFFSET FOR SIDEBAR) ── */}
@@ -294,7 +297,7 @@ export default function Collections() {
         </header>
 
         {/* Content Area */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 space-y-6 w-full flex-1">
+        <main className="max-w-7xl mx-auto px-4 sm:px-8 py-5 sm:py-8 space-y-4 sm:space-y-6 w-full flex-1">
           {/* Header & Stats */}
           <CollectionsHeader
             selectedStore={selectedStore}

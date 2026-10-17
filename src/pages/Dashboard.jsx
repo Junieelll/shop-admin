@@ -8,6 +8,8 @@ import ProductTable from '../components/dashboard/ProductTable'
 import ProductModal from '../components/dashboard/ProductModal'
 import DeleteProductModal from '../components/dashboard/DeleteProductModal'
 import DeleteCollectionModal from '../components/common/DeleteCollectionModal'
+import Pagination from '../components/common/Pagination'
+import OnboardingTour from '../components/common/OnboardingTour'
 import {
   fetchProductsFromDb,
   createProductInDb,
@@ -64,6 +66,23 @@ export default function Dashboard() {
   const [productToDelete, setProductToDelete] = useState(null)
   const [collectionToDelete, setCollectionToDelete] = useState(null)
   const [editingProduct, setEditingProduct] = useState(null)
+  const [isTourOpen, setIsTourOpen] = useState(false)
+
+  // Auto-launch onboarding tour on first visit or via ?tour=1 param
+  useEffect(() => {
+    if (searchParams.get('tour') === '1') {
+      setIsTourOpen(true)
+      return
+    }
+
+    const hasSeenTour = localStorage.getItem('shopadmin_tour_seen')
+    if (!hasSeenTour) {
+      const timer = setTimeout(() => {
+        setIsTourOpen(true)
+      }, 700)
+      return () => clearTimeout(timer)
+    }
+  }, [searchParams])
 
   // Product Form State
   const [formData, setFormData] = useState({
@@ -187,6 +206,24 @@ export default function Dashboard() {
       return true
     })
   }, [storeProducts, debouncedSearchQuery, activeFilter])
+
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(12)
+  const [prevFilterKey, setPrevFilterKey] = useState(() => `${selectedStore}-${activeFilter}-${debouncedSearchQuery}`)
+
+  // Reset pagination on filter or search changes during render (avoids setState in effect)
+  const currentFilterKey = `${selectedStore}-${activeFilter}-${debouncedSearchQuery}`
+  if (prevFilterKey !== currentFilterKey) {
+    setPrevFilterKey(currentFilterKey)
+    setCurrentPage(1)
+  }
+
+  const totalPages = Math.ceil(filteredProducts.length / itemsPerPage) || 1
+  const paginatedProducts = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage
+    return filteredProducts.slice(start, start + itemsPerPage)
+  }, [filteredProducts, currentPage, itemsPerPage])
 
   const featuredCount = storeProducts.filter(p => p.featured).length
 
@@ -423,6 +460,7 @@ export default function Dashboard() {
         onCloseMobile={() => setIsOpenMobile(false)}
         productsCount={storeProducts.length}
         collectionsCount={storeCollections.length}
+        onStartTour={() => setIsTourOpen(true)}
       />
 
       {/* ── MAIN CONTENT (OFFSET FOR SIDEBAR) ── */}
@@ -434,6 +472,7 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setIsOpenMobile(true)}
+              data-tour="mobile-menu-btn"
               className="p-1.5 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
@@ -442,9 +481,22 @@ export default function Dashboard() {
             </button>
             <span className="font-bold text-base tracking-tight">ShopAdmin</span>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
-            {selectedStore === 'selyn' ? 'Selyn Dress' : 'Luxe Haven II'}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsTourOpen(true)}
+              className="p-1.5 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-1 cursor-pointer"
+              title="Interactive Tour"
+            >
+              <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              <span className="text-xs font-semibold">Tour</span>
+            </button>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+              {selectedStore === 'selyn' ? 'Selyn Dress' : 'Luxe Haven II'}
+            </span>
+          </div>
         </header>
 
         {/* Main Content Area */}
@@ -466,6 +518,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2.5">
               <Link
                 to="/collections"
+                data-tour="collections-link"
                 className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-semibold shadow-xs transition-all no-underline"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
@@ -477,6 +530,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={handleOpenAddModal}
+                data-tour="add-product-btn"
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-black dark:bg-white text-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-200 text-xs font-semibold shadow-sm transition-all cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
@@ -488,25 +542,27 @@ export default function Dashboard() {
           </div>
 
           {/* ── FILTER, SEARCH & VIEW MODE TOOLBAR ── */}
-          <ProductToolbar
-            activeFilter={activeFilter}
-            setActiveFilter={setActiveFilter}
-            selectedStore={selectedStore}
-            storeProductsCount={storeProducts.length}
-            featuredCount={featuredCount}
-            storeCollections={storeCollections}
-            storeProducts={storeProducts}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            isSearching={isSearching}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
-          />
+          <div data-tour="product-toolbar">
+            <ProductToolbar
+              activeFilter={activeFilter}
+              setActiveFilter={setActiveFilter}
+              selectedStore={selectedStore}
+              storeProductsCount={storeProducts.length}
+              featuredCount={featuredCount}
+              storeCollections={storeCollections}
+              storeProducts={storeProducts}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              isSearching={isSearching}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+            />
+          </div>
 
           {/* ── PRODUCTS VIEW (GRID OR LIST) ── */}
           {viewMode === 'grid' ? (
             <ProductGrid
-              products={filteredProducts}
+              products={isLoading ? [] : paginatedProducts}
               isLoading={isLoading}
               selectedStore={selectedStore}
               searchQuery={debouncedSearchQuery}
@@ -517,7 +573,7 @@ export default function Dashboard() {
             />
           ) : (
             <ProductTable
-              products={filteredProducts}
+              products={isLoading ? [] : paginatedProducts}
               isLoading={isLoading}
               selectedStore={selectedStore}
               searchQuery={debouncedSearchQuery}
@@ -525,6 +581,21 @@ export default function Dashboard() {
               onEdit={handleOpenEditModal}
               onDelete={setProductToDelete}
               onOpenAddModal={handleOpenAddModal}
+            />
+          )}
+
+          {/* ── PAGINATION CONTROLS ── */}
+          {!isLoading && filteredProducts.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredProducts.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={(page) => {
+                setCurrentPage(page)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              onItemsPerPageChange={setItemsPerPage}
             />
           )}
         </main>
@@ -555,6 +626,14 @@ export default function Dashboard() {
         collectionToDelete={collectionToDelete}
         onClose={() => setCollectionToDelete(null)}
         onConfirm={confirmDeleteCollection}
+      />
+
+      {/* ── ONBOARDING TUTORIAL TOUR ── */}
+      <OnboardingTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        isOpenMobile={isOpenMobile}
+        setIsOpenMobile={setIsOpenMobile}
       />
     </div>
   )

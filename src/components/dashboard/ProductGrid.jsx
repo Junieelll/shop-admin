@@ -13,9 +13,9 @@ export default function ProductGrid({
 }) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
         {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-          <div key={i} className="aspect-4/5 rounded-3xl bg-neutral-100 dark:bg-neutral-800/50 animate-pulse border border-neutral-200/60 dark:border-neutral-800" />
+          <div key={i} className="aspect-4/5 rounded-2xl sm:rounded-3xl bg-neutral-100 dark:bg-neutral-800/50 animate-pulse border border-neutral-200/60 dark:border-neutral-800" />
         ))}
       </div>
     )
@@ -57,7 +57,7 @@ export default function ProductGrid({
   return (
     <motion.div
       layout
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+      className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6"
     >
       <AnimatePresence mode="popLayout">
         {products.map((product, index) => (

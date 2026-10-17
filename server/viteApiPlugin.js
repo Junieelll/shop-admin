@@ -5,6 +5,8 @@ import productsHandler from '../api/products.js'
 import collectionsHandler from '../api/collections.js'
 import uploadHandler from '../api/upload.js'
 import updateEmailHandler from '../api/update-email.js'
+import updateProfileHandler from '../api/update-profile.js'
+import userProfileHandler from '../api/user-profile.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const envLocalPath = path.resolve(__dirname, '../.env.local')
@@ -39,7 +41,14 @@ export function viteApiPlugin() {
           pathname = pathname.replace('/api/db/', '/api/')
         }
 
-        if (pathname !== '/api/products' && pathname !== '/api/collections' && pathname !== '/api/upload' && pathname !== '/api/update-email') {
+        if (
+          pathname !== '/api/products' &&
+          pathname !== '/api/collections' &&
+          pathname !== '/api/upload' &&
+          pathname !== '/api/update-email' &&
+          pathname !== '/api/update-profile' &&
+          pathname !== '/api/user-profile'
+        ) {
           return next()
         }
 
@@ -96,6 +105,14 @@ export function viteApiPlugin() {
 
           if (pathname === '/api/update-email') {
             return await updateEmailHandler(vercelReq, vercelRes)
+          }
+
+          if (pathname === '/api/update-profile') {
+            return await updateProfileHandler(vercelReq, vercelRes)
+          }
+
+          if (pathname === '/api/user-profile') {
+            return await userProfileHandler(vercelReq, vercelRes)
           }
 
           next()
