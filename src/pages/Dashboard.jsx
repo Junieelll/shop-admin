@@ -12,6 +12,7 @@ import Pagination from '../components/common/Pagination'
 import OnboardingTour from '../components/common/OnboardingTour'
 import {
   fetchProductsFromDb,
+  fetchProductImagesFromDb,
   createProductInDb,
   updateProductInDb,
   toggleFeaturedInDb,
@@ -310,28 +311,36 @@ export default function Dashboard() {
     setIsModalOpen(true)
   }
 
-  const handleOpenEditModal = (product) => {
-    setEditingProduct(product)
-    const gallery = product.images?.length ? product.images : (product.image ? [product.image] : [])
-    setFormData({
-      name: product.name,
-      price: product.price,
-      image: product.image || gallery[0] || '',
-      images: gallery,
-      featured: product.featured,
-      description: product.description || '',
-      sizes: product.attributes?.sizes || ['M'],
-      collection_ids: product.collection_ids || [],
-      category: product.category_name || 'Perfume',
-      volume: product.attributes?.volume || '100ml',
-      scent: product.attributes?.scent || '',
-      material: product.attributes?.material || '',
-      gemstone: product.attributes?.gemstone || '',
-      frame_shape: product.attributes?.frame_shape || 'Aviator',
-      lens_color: product.attributes?.lens_color || 'Black'
-    })
-    setIsModalOpen(true)
+  const handleOpenEditModal = async (listProduct) => {
+  const imgRes = await fetchProductImagesFromDb(listProduct.id, selectedStore)
+  if (!imgRes.success) {
+    showToast('Could not load product images. Please try again.', 'error')
+    return
   }
+  const fullImages = imgRes.data?.images?.length ? imgRes.data.images : []
+  const product = { ...listProduct, images: fullImages }
+
+  setEditingProduct(product)
+  const gallery = fullImages.length ? fullImages : (product.image ? [product.image] : [])
+  setFormData({
+    name: product.name,
+    price: product.price,
+    image: product.image || gallery[0] || '',
+    images: gallery,
+    featured: product.featured,
+    description: product.description || '',
+    sizes: product.attributes?.sizes || ['M'],
+    collection_ids: product.collection_ids || [],
+    category: product.category_name || 'Perfume',
+    volume: product.attributes?.volume || '100ml',
+    scent: product.attributes?.scent || '',
+    material: product.attributes?.material || '',
+    gemstone: product.attributes?.gemstone || '',
+    frame_shape: product.attributes?.frame_shape || 'Aviator',
+    lens_color: product.attributes?.lens_color || 'Black'
+  })
+  setIsModalOpen(true)
+}
 
   const handleSaveProduct = (e) => {
     e.preventDefault()
