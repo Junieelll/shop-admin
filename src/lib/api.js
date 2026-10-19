@@ -9,39 +9,73 @@ const DATABASE_URL =
 // Create a reusable SQL query function
 const sql = neon(DATABASE_URL)
 
+// Small batches keep every response well under Neon's 64 MB limit
+const PRODUCT_BATCH_SIZE = 5
+
 /**
- * Fetch products directly from Neon Database
+ * Fetch products in small batches (no gallery arrays, main image only)
  */
 export async function fetchProductsFromDb(storeId = 'selyn') {
   try {
-    const rows = await sql`
-      SELECT 
-        p.id,
-        p.store_id,
-        p.category_id,
-        c.name as category_name,
-        p.name,
-        p.price,
-        p.image,
-        p.images,
-        p.featured,
-        p.description,
-        p.attributes,
-        p.created_at,
-        COALESCE(json_agg(DISTINCT col.id) FILTER (WHERE col.id IS NOT NULL), '[]') as collection_ids,
-        COALESCE(json_agg(DISTINCT jsonb_build_object('id', col.id, 'name', col.name, 'slug', col.slug)) FILTER (WHERE col.id IS NOT NULL), '[]') as collections
-      FROM products p
-      LEFT JOIN categories c ON p.category_id = c.id
-      LEFT JOIN product_collections pc ON p.id = pc.product_id
-      LEFT JOIN collections col ON pc.collection_id = col.id
-      WHERE p.store_id = ${storeId}
-      GROUP BY p.id, c.name
-      ORDER BY p.id DESC
-    `
-    return { success: true, data: rows || [] }
+    const countRows = await sql`SELECT COUNT(*)::int AS total FROM products WHERE store_id = ${storeId}`
+    const total = countRows?.[0]?.total || 0
+
+    const offsets = []
+    for (let o = 0; o < total; o += PRODUCT_BATCH_SIZE) offsets.push(o)
+
+    const batches = await Promise.all(
+      offsets.map((offset) => sql`
+        SELECT 
+          p.id,
+          p.store_id,
+          p.category_id,
+          c.name as category_name,
+          p.name,
+          p.price,
+          p.image,
+          p.featured,
+          p.description,
+          p.attributes,
+          p.created_at,
+          COALESCE(json_agg(DISTINCT col.id) FILTER (WHERE col.id IS NOT NULL), '[]') as collection_ids,
+          COALESCE(json_agg(DISTINCT jsonb_build_object('id', col.id, 'name', col.name, 'slug', col.slug)) FILTER (WHERE col.id IS NOT NULL), '[]') as collections
+        FROM (
+          SELECT id, store_id, category_id, name, price, image, featured, description, attributes, created_at
+          FROM products
+          WHERE store_id = ${storeId}
+          ORDER BY id DESC
+          LIMIT ${PRODUCT_BATCH_SIZE} OFFSET ${offset}
+        ) p
+        LEFT JOIN categories c ON p.category_id = c.id
+        LEFT JOIN product_collections pc ON p.id = pc.product_id
+        LEFT JOIN collections col ON pc.collection_id = col.id
+        GROUP BY p.id, p.store_id, p.category_id, c.name, p.name, p.price, p.image, p.featured, p.description, p.attributes, p.created_at
+        ORDER BY p.id DESC
+      `)
+    )
+
+    // One-item gallery for display; the full gallery loads when opening Edit
+    const rows = batches.flat().map((p) => ({ ...p, images: p.image ? [p.image] : [] }))
+    return { success: true, data: rows }
   } catch (err) {
     console.error('Neon SQL Fetch Error:', err)
     return { success: false, error: err.message, data: [] }
+  }
+}
+
+/**
+ * Load the full photo gallery for ONE product (used by the edit modal)
+ */
+export async function fetchProductImagesFromDb(id, storeId = 'selyn') {
+  try {
+    const rows = await sql`
+      SELECT images FROM products
+      WHERE id = ${Number(id)} AND store_id = ${storeId}
+    `
+    return { success: true, data: rows?.[0] || { images: [] } }
+  } catch (err) {
+    console.error('Neon SQL Images Fetch Error:', err)
+    return { success: false, error: err.message, data: { images: [] } }
   }
 }
 
@@ -62,7 +96,7 @@ export async function createProductInDb(product, storeId = 'selyn') {
     const rows = await sql`
       INSERT INTO products (store_id, category_id, name, price, image, images, featured, description, attributes)
       VALUES (${storeId}, ${catId}, ${name}, ${price}, ${image}, ${images}, ${featured}, ${description}, ${attributes}::jsonb)
-      RETURNING *
+      RETURNING id, store_id, name, price, image, featured, description, attributes
     `
     const newProduct = rows?.[0]
 
@@ -103,7 +137,7 @@ export async function updateProductInDb(product, storeId = 'selyn') {
       UPDATE products
       SET name = ${name}, price = ${price}, image = ${image}, images = ${images}, featured = ${featured}, description = ${description}, attributes = ${attributes}::jsonb, category_id = ${catId}, updated_at = NOW()
       WHERE id = ${productId} AND store_id = ${storeId}
-      RETURNING *
+      RETURNING id, store_id, name, price, image, featured, description, attributes
     `
 
     // Update collections junction
@@ -272,4 +306,3 @@ export async function removeProductFromCollectionInDb(productId, collectionId) {
     return { success: false, error: err.message }
   }
 }
-
