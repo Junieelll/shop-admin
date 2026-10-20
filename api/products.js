@@ -3,8 +3,11 @@ import { createClient } from '@libsql/client'
 let client
 function getClient() {
   if (!client) {
-    const url = process.env.TURSO_DATABASE_URL || 'libsql://shop-db-junieelll.aws-ap-northeast-1.turso.io'
-    const authToken = process.env.TURSO_AUTH_TOKEN || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTI1MDQ3NDksImlkIjoiMDFhMTU5OTktNzYwMS03YmVkLWJlYTUtNjAwMzkyN2M5NThmIiwia2lkIjoiT3JzNGpUN05ZSVY2NXZGNnRvUVBOMWMtZnBIcENQaXpOX251VzZrNDlmNCIsInJpZCI6IjY1MjgyZTA0LWU5MDktNGI4MS1hMGIyLTJkN2Y4MGIzNzNmMiJ9.BGkxZuu-V7bib21e-uoVqfTxrn0o5TaVnCDjsTkhf7xg9OSzsd4LCPscbjoEKdnmPTradnk9eiH82AoUA9h1Cw'
+    const url = process.env.TURSO_DATABASE_URL
+    const authToken = process.env.TURSO_AUTH_TOKEN
+    if (!url || !authToken) {
+      throw new Error('Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN environment variables')
+    }
     client = createClient({ url, authToken })
   }
   return client
