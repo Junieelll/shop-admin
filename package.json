@@ -16,6 +16,7 @@
     "@neondatabase/serverless": "^1.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "framer-motion": "^14.2.0",
+    "pg": "^8.13.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",

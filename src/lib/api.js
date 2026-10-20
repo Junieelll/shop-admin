@@ -56,43 +56,43 @@ function normalizeProduct(p, collectionsMap = {}) {
 
 /**
  * Fetch products directly from Turso SQLite
+ * OPTIMIZED: Runs product & collection junction queries in parallel (cuts latency in half)
  */
 export async function fetchProductsFromDb(storeId = 'selyn') {
   try {
-    // 1. Fetch products with category name
-    const productsRes = await db.execute({
-      sql: `
-        SELECT 
-          p.id,
-          p.store_id,
-          p.category_id,
-          c.name as category_name,
-          p.name,
-          p.price,
-          p.image,
-          p.images,
-          p.featured,
-          p.description,
-          p.attributes,
-          p.created_at
-        FROM products p
-        LEFT JOIN categories c ON p.category_id = c.id
-        WHERE p.store_id = ?
-        ORDER BY p.id DESC
-      `,
-      args: [storeId],
-    })
-
-    // 2. Fetch linked collections for this store
-    const pcRes = await db.execute({
-      sql: `
-        SELECT pc.product_id, col.id, col.name, col.slug
-        FROM product_collections pc
-        JOIN collections col ON pc.collection_id = col.id
-        WHERE col.store_id = ?
-      `,
-      args: [storeId],
-    })
+    const [productsRes, pcRes] = await Promise.all([
+      db.execute({
+        sql: `
+          SELECT 
+            p.id,
+            p.store_id,
+            p.category_id,
+            c.name as category_name,
+            p.name,
+            p.price,
+            p.image,
+            p.images,
+            p.featured,
+            p.description,
+            p.attributes,
+            p.created_at
+          FROM products p
+          LEFT JOIN categories c ON p.category_id = c.id
+          WHERE p.store_id = ?
+          ORDER BY p.id DESC
+        `,
+        args: [storeId],
+      }),
+      db.execute({
+        sql: `
+          SELECT pc.product_id, col.id, col.name, col.slug
+          FROM product_collections pc
+          JOIN collections col ON pc.collection_id = col.id
+          WHERE col.store_id = ?
+        `,
+        args: [storeId],
+      }),
+    ])
 
     const collectionsMap = {}
     for (const row of pcRes.rows) {
@@ -114,7 +114,31 @@ export async function fetchProductsFromDb(storeId = 'selyn') {
 }
 
 /**
+ * Load the full photo gallery for ONE product (used by the edit modal)
+ */
+export async function fetchProductImagesFromDb(id, storeId = 'selyn') {
+  try {
+    const res = await db.execute({
+      sql: `SELECT image, images FROM products WHERE id = ? AND store_id = ?`,
+      args: [Number(id), storeId],
+    })
+    const row = res.rows[0]
+    let images = []
+    try {
+      images = typeof row?.images === 'string' ? JSON.parse(row.images) : (row?.images || [])
+    } catch {
+      images = row?.image ? [row.image] : []
+    }
+    return { success: true, data: { images: images.length ? images : (row?.image ? [row.image] : []) } }
+  } catch (err) {
+    console.error('Turso SQL Images Fetch Error:', err)
+    return { success: false, error: err.message, data: { images: [] } }
+  }
+}
+
+/**
  * Insert a new product into Turso SQLite
+ * OPTIMIZED: Bundles junction links in batch
  */
 export async function createProductInDb(product, storeId = 'selyn') {
   try {
@@ -137,17 +161,13 @@ export async function createProductInDb(product, storeId = 'selyn') {
 
     const newId = Number(result.lastInsertRowid)
 
-    // Link collections in junction table
+    // Link collections in a single batch request
     if (newId && Array.isArray(product.collection_ids) && product.collection_ids.length > 0) {
-      for (const colId of product.collection_ids) {
-        await db.execute({
-          sql: `
-            INSERT OR IGNORE INTO product_collections (product_id, collection_id)
-            VALUES (?, ?)
-          `,
-          args: [newId, Number(colId)],
-        })
-      }
+      const linkStatements = product.collection_ids.map(colId => ({
+        sql: `INSERT OR IGNORE INTO product_collections (product_id, collection_id) VALUES (?, ?)`,
+        args: [newId, Number(colId)],
+      }))
+      await db.batch(linkStatements, 'write')
     }
 
     // Fetch back the created product
@@ -171,6 +191,7 @@ export async function createProductInDb(product, storeId = 'selyn') {
 
 /**
  * Update an existing product in Turso SQLite
+ * OPTIMIZED: Executes update + collection junction sync in a single atomic batch transaction
  */
 export async function updateProductInDb(product, storeId = 'selyn') {
   try {
@@ -184,31 +205,34 @@ export async function updateProductInDb(product, storeId = 'selyn') {
     const catId = product.category_id ? Number(product.category_id) : null
     const productId = Number(product.id)
 
-    await db.execute({
-      sql: `
-        UPDATE products
-        SET name = ?, price = ?, image = ?, images = ?, featured = ?, description = ?, attributes = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND store_id = ?
-      `,
-      args: [name, price, image, images, featured, description, attributes, catId, productId, storeId],
-    })
+    // Build atomic transaction batch
+    const statements = [
+      {
+        sql: `
+          UPDATE products
+          SET name = ?, price = ?, image = ?, images = ?, featured = ?, description = ?, attributes = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND store_id = ?
+        `,
+        args: [name, price, image, images, featured, description, attributes, catId, productId, storeId],
+      },
+    ]
 
-    // Update collections junction
+    // Sync collections inside same transaction
     if (Array.isArray(product.collection_ids)) {
-      await db.execute({
+      statements.push({
         sql: `DELETE FROM product_collections WHERE product_id = ?`,
         args: [productId],
       })
       for (const colId of product.collection_ids) {
-        await db.execute({
-          sql: `
-            INSERT OR IGNORE INTO product_collections (product_id, collection_id)
-            VALUES (?, ?)
-          `,
+        statements.push({
+          sql: `INSERT OR IGNORE INTO product_collections (product_id, collection_id) VALUES (?, ?)`,
           args: [productId, Number(colId)],
         })
       }
     }
+
+    // Execute atomic batch
+    await db.batch(statements, 'write')
 
     const fetchRes = await db.execute({
       sql: `
