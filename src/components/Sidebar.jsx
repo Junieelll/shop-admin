@@ -211,9 +211,9 @@ export default function Sidebar({
         }`}>
           <div className="flex items-center gap-2">
             <span className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'}`} />
-            <span>{isDbConnected ? 'Neon DB Live' : (isSyncing ? 'Syncing...' : 'Connecting DB')}</span>
+            <span>{isDbConnected ? 'Turso DB Live' : (isSyncing ? 'Syncing...' : 'Connecting DB')}</span>
           </div>
-          <span className="text-[10px] text-neutral-400">Postgres</span>
+          <span className="text-[10px] text-neutral-400">SQLite</span>
         </div>
 
         {/* Theme Toggle & User Info */}

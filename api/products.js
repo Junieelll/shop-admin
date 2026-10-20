@@ -1,14 +1,48 @@
-import pg from 'pg'
+import { createClient } from '@libsql/client'
 
-let pool
-function getPool() {
-  if (!pool) {
-    pool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-    })
+let client
+function getClient() {
+  if (!client) {
+    const url = process.env.TURSO_DATABASE_URL || 'libsql://shop-db-junieelll.aws-ap-northeast-1.turso.io'
+    const authToken = process.env.TURSO_AUTH_TOKEN || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTI1MDQ3NDksImlkIjoiMDFhMTU5OTktNzYwMS03YmVkLWJlYTUtNjAwMzkyN2M5NThmIiwia2lkIjoiT3JzNGpUN05ZSVY2NXZGNnRvUVBOMWMtZnBIcENQaXpOX251VzZrNDlmNCIsInJpZCI6IjY1MjgyZTA0LWU5MDktNGI4MS1hMGIyLTJkN2Y4MGIzNzNmMiJ9.BGkxZuu-V7bib21e-uoVqfTxrn0o5TaVnCDjsTkhf7xg9OSzsd4LCPscbjoEKdnmPTradnk9eiH82AoUA9h1Cw'
+    client = createClient({ url, authToken })
   }
-  return pool
+  return client
+}
+
+function normalizeProduct(p, collectionsMap = {}) {
+  let images = []
+  try {
+    images = typeof p.images === 'string' ? JSON.parse(p.images) : (p.images || [])
+  } catch {
+    images = p.images ? [p.images] : []
+  }
+
+  let attributes = {}
+  try {
+    attributes = typeof p.attributes === 'string' ? JSON.parse(p.attributes) : (p.attributes || {})
+  } catch {
+    attributes = {}
+  }
+
+  const linkedCollections = collectionsMap[p.id] || []
+
+  return {
+    id: Number(p.id),
+    store_id: p.store_id,
+    category_id: p.category_id ? Number(p.category_id) : null,
+    category_name: p.category_name || null,
+    name: p.name || '',
+    price: Number(p.price) || 0,
+    image: p.image || '',
+    images: Array.isArray(images) && images.length ? images : (p.image ? [p.image] : []),
+    featured: Boolean(p.featured),
+    description: p.description || '',
+    attributes,
+    created_at: p.created_at,
+    collection_ids: linkedCollections.map(c => Number(c.id)),
+    collections: linkedCollections,
+  }
 }
 
 export default async function handler(req, res) {
@@ -20,120 +54,161 @@ export default async function handler(req, res) {
     return res.status(200).end()
   }
 
-  const db = getPool()
+  const db = getClient()
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
   const storeId = url.searchParams.get('store') || 'selyn'
   const productId = url.searchParams.get('id')
 
   try {
     if (req.method === 'GET') {
-      const result = await db.query(`
-        SELECT 
-          p.id,
-          p.store_id,
-          p.category_id,
-          c.name as category_name,
-          p.name,
-          p.price,
-          p.image,
-          p.images,
-          p.featured,
-          p.description,
-          p.attributes,
-          p.created_at,
-          COALESCE(
-            json_agg(DISTINCT col.id) FILTER (WHERE col.id IS NOT NULL),
-            '[]'
-          ) as collection_ids,
-          COALESCE(
-            json_agg(DISTINCT jsonb_build_object('id', col.id, 'name', col.name, 'slug', col.slug)) FILTER (WHERE col.id IS NOT NULL),
-            '[]'
-          ) as collections
-        FROM products p
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN product_collections pc ON p.id = pc.product_id
-        LEFT JOIN collections col ON pc.collection_id = col.id
-        WHERE p.store_id = $1
-        GROUP BY p.id, c.name
-        ORDER BY p.id DESC;
-      `, [storeId])
+      const productsRes = await db.execute({
+        sql: `
+          SELECT 
+            p.id,
+            p.store_id,
+            p.category_id,
+            c.name as category_name,
+            p.name,
+            p.price,
+            p.image,
+            p.images,
+            p.featured,
+            p.description,
+            p.attributes,
+            p.created_at
+          FROM products p
+          LEFT JOIN categories c ON p.category_id = c.id
+          WHERE p.store_id = ?
+          ORDER BY p.id DESC
+        `,
+        args: [storeId],
+      })
 
-      return res.status(200).json(result.rows)
+      const pcRes = await db.execute({
+        sql: `
+          SELECT pc.product_id, col.id, col.name, col.slug
+          FROM product_collections pc
+          JOIN collections col ON pc.collection_id = col.id
+          WHERE col.store_id = ?
+        `,
+        args: [storeId],
+      })
+
+      const collectionsMap = {}
+      for (const row of pcRes.rows) {
+        const pid = row.product_id
+        if (!collectionsMap[pid]) collectionsMap[pid] = []
+        collectionsMap[pid].push({
+          id: Number(row.id),
+          name: row.name,
+          slug: row.slug,
+        })
+      }
+
+      const rows = productsRes.rows.map(p => normalizeProduct(p, collectionsMap))
+      return res.status(200).json(rows)
     }
 
     if (req.method === 'POST') {
-      const { name, price, image, images = [], featured = false, description = '', attributes = {}, category_id = null, collection_ids = [] } = req.body
+      const {
+        name,
+        price,
+        image,
+        images = [],
+        category_id = null,
+        featured = false,
+        description = '',
+        attributes = {},
+        collection_ids = [],
+      } = req.body
 
-      const insertRes = await db.query(`
-        INSERT INTO products (store_id, category_id, name, price, image, images, featured, description, attributes)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING *;
-      `, [storeId, category_id, name, price, image, images, featured, description, JSON.stringify(attributes)])
+      const imagesJson = JSON.stringify(images?.length ? images : [image])
+      const attributesJson = JSON.stringify(attributes || {})
+      const featuredInt = featured ? 1 : 0
 
-      const newProduct = insertRes.rows[0]
+      const result = await db.execute({
+        sql: `
+          INSERT INTO products (store_id, category_id, name, price, image, images, featured, description, attributes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        args: [storeId, category_id ? Number(category_id) : null, name, Number(price), image, imagesJson, featuredInt, description, attributesJson],
+      })
+
+      const newId = Number(result.lastInsertRowid)
 
       if (Array.isArray(collection_ids) && collection_ids.length > 0) {
         for (const colId of collection_ids) {
-          await db.query(`
-            INSERT INTO product_collections (product_id, collection_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING;
-          `, [newProduct.id, colId])
+          await db.execute({
+            sql: `INSERT OR IGNORE INTO product_collections (product_id, collection_id) VALUES (?, ?)`,
+            args: [newId, Number(colId)],
+          })
         }
       }
 
-      return res.status(201).json(newProduct)
+      return res.status(201).json({ id: newId, store_id: storeId, name, price, image })
     }
 
     if (req.method === 'PUT') {
-      const { id, name, price, image, images = [], featured = false, description = '', attributes = {}, category_id = null, collection_ids = [] } = req.body
+      const {
+        id,
+        name,
+        price,
+        image,
+        images = [],
+        category_id = null,
+        featured = false,
+        description = '',
+        attributes = {},
+        collection_ids = [],
+      } = req.body
 
-      const updateRes = await db.query(`
-        UPDATE products
-        SET name = $1, price = $2, image = $3, images = $4, featured = $5, description = $6, attributes = $7, category_id = $8, updated_at = NOW()
-        WHERE id = $9 AND store_id = $10
-        RETURNING *;
-      `, [name, price, image, images, featured, description, JSON.stringify(attributes), category_id, id, storeId])
+      const targetId = Number(id || productId)
+      const imagesJson = JSON.stringify(images?.length ? images : [image])
+      const attributesJson = JSON.stringify(attributes || {})
+      const featuredInt = featured ? 1 : 0
+
+      await db.execute({
+        sql: `
+          UPDATE products
+          SET name = ?, price = ?, image = ?, images = ?, featured = ?, description = ?, attributes = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND store_id = ?
+        `,
+        args: [name, Number(price), image, imagesJson, featuredInt, description, attributesJson, category_id ? Number(category_id) : null, targetId, storeId],
+      })
 
       if (Array.isArray(collection_ids)) {
-        await db.query('DELETE FROM product_collections WHERE product_id = $1;', [id])
+        await db.execute({
+          sql: `DELETE FROM product_collections WHERE product_id = ?`,
+          args: [targetId],
+        })
         for (const colId of collection_ids) {
-          await db.query(`
-            INSERT INTO product_collections (product_id, collection_id)
-            VALUES ($1, $2)
-            ON CONFLICT DO NOTHING;
-          `, [id, colId])
+          await db.execute({
+            sql: `INSERT OR IGNORE INTO product_collections (product_id, collection_id) VALUES (?, ?)`,
+            args: [targetId, Number(colId)],
+          })
         }
       }
 
-      return res.status(200).json(updateRes.rows[0])
-    }
-
-    if (req.method === 'PATCH') {
-      // Quick toggle for featured
-      const { id, featured } = req.body
-      const toggleRes = await db.query(`
-        UPDATE products
-        SET featured = $1, updated_at = NOW()
-        WHERE id = $2 AND store_id = $3
-        RETURNING id, featured;
-      `, [featured, id, storeId])
-
-      return res.status(200).json(toggleRes.rows[0])
+      return res.status(200).json({ success: true, id: targetId })
     }
 
     if (req.method === 'DELETE') {
-      const idToDelete = productId || req.body?.id
-      if (!idToDelete) return res.status(400).json({ error: 'Missing product ID' })
+      const targetId = Number(productId || req.body?.id)
+      if (!targetId) {
+        return res.status(400).json({ error: 'Missing product ID' })
+      }
 
-      await db.query('DELETE FROM products WHERE id = $1 AND store_id = $2;', [idToDelete, storeId])
-      return res.status(200).json({ success: true, id: idToDelete })
+      await db.execute({
+        sql: `DELETE FROM products WHERE id = ? AND store_id = ?`,
+        args: [targetId, storeId],
+      })
+
+      return res.status(200).json({ success: true })
     }
 
-    res.setHeader('Allow', ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
-    res.status(405).end(`Method ${req.method} Not Allowed`)
-  } catch (error) {
-    console.error('API /products error:', error)
-    res.status(500).json({ error: error.message })
+    return res.status(405).json({ error: 'Method not allowed' })
+  } catch (err) {
+    console.error('Products API Error:', err)
+    return res.status(500).json({ error: err.message })
   }
 }

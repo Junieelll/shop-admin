@@ -84,7 +84,7 @@ export const TOUR_STEPS = [
     target: '[data-tour="db-status"]',
     requiresSidebar: true,
     title: 'Live Neon Database Sync',
-    description: 'Your shop is connected live to Neon serverless PostgreSQL. All product updates, rate changes, and collection links sync directly in realtime.',
+    description: 'Your shop is connected live to Turso serverless SQLite. All product updates, rate changes, and collection links sync directly in realtime.',
     badge: 'Realtime Sync',
     icon: (
       <svg className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">

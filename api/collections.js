@@ -1,14 +1,13 @@
-import pg from 'pg'
+import { createClient } from '@libsql/client'
 
-let pool
-function getPool() {
-  if (!pool) {
-    pool = new pg.Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-    })
+let client
+function getClient() {
+  if (!client) {
+    const url = process.env.TURSO_DATABASE_URL || 'libsql://shop-db-junieelll.aws-ap-northeast-1.turso.io'
+    const authToken = process.env.TURSO_AUTH_TOKEN || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTI1MDQ3NDksImlkIjoiMDFhMTU5OTktNzYwMS03YmVkLWJlYTUtNjAwMzkyN2M5NThmIiwia2lkIjoiT3JzNGpUN05ZSVY2NXZGNnRvUVBOMWMtZnBIcENQaXpOX251VzZrNDlmNCIsInJpZCI6IjY1MjgyZTA0LWU5MDktNGI4MS1hMGIyLTJkN2Y4MGIzNzNmMiJ9.BGkxZuu-V7bib21e-uoVqfTxrn0o5TaVnCDjsTkhf7xg9OSzsd4LCPscbjoEKdnmPTradnk9eiH82AoUA9h1Cw'
+    client = createClient({ url, authToken })
   }
-  return pool
+  return client
 }
 
 export default async function handler(req, res) {
@@ -20,56 +19,108 @@ export default async function handler(req, res) {
     return res.status(200).end()
   }
 
-  const db = getPool()
+  const db = getClient()
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
   const storeId = url.searchParams.get('store') || 'selyn'
 
   try {
     if (req.method === 'GET') {
-      const result = await db.query(`
-        SELECT 
-          c.id,
-          c.store_id,
-          c.name,
-          c.slug,
-          c.description,
-          c.banner_image,
-          COUNT(pc.product_id)::int as product_count
-        FROM collections c
-        LEFT JOIN product_collections pc ON c.id = pc.collection_id
-        WHERE c.store_id = $1
-        GROUP BY c.id
-        ORDER BY c.id ASC;
-      `, [storeId])
+      const result = await db.execute({
+        sql: `
+          SELECT 
+            c.id,
+            c.store_id,
+            c.name,
+            c.slug,
+            c.description,
+            c.banner_image,
+            COUNT(pc.product_id) as product_count
+          FROM collections c
+          LEFT JOIN product_collections pc ON c.id = pc.collection_id
+          WHERE c.store_id = ?
+          GROUP BY c.id
+          ORDER BY c.id ASC;
+        `,
+        args: [storeId],
+      })
 
-      return res.status(200).json(result.rows)
+      const rows = result.rows.map(r => ({
+        id: Number(r.id),
+        store_id: r.store_id,
+        name: r.name,
+        slug: r.slug,
+        description: r.description,
+        banner_image: r.banner_image,
+        product_count: Number(r.product_count) || 0,
+      }))
+
+      return res.status(200).json(rows)
     }
 
     if (req.method === 'POST') {
-      const { name, slug, description = '', banner_image = null } = req.body
+      const { name, slug, description = '', banner_image = null } = req.body || {}
+      const cleanSlug = slug || (name ? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : 'col-' + Date.now())
+
+      const insertRes = await db.execute({
+        sql: `
+          INSERT INTO collections (store_id, name, slug, description, banner_image)
+          VALUES (?, ?, ?, ?, ?)
+        `,
+        args: [storeId, name, cleanSlug, description, banner_image],
+      })
+
+      const newId = Number(insertRes.lastInsertRowid)
+
+      return res.status(201).json({
+        id: newId,
+        store_id: storeId,
+        name,
+        slug: cleanSlug,
+        description,
+        banner_image,
+      })
+    }
+
+    if (req.method === 'PUT') {
+      const { id, name, slug, description = '', banner_image = null } = req.body || {}
       const cleanSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
-      const insertRes = await db.query(`
-        INSERT INTO collections (store_id, name, slug, description, banner_image)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *;
-      `, [storeId, name, cleanSlug, description, banner_image])
+      await db.execute({
+        sql: `
+          UPDATE collections
+          SET name = ?, slug = ?, description = ?, banner_image = ?
+          WHERE id = ? AND store_id = ?
+        `,
+        args: [name, cleanSlug, description, banner_image, Number(id), storeId],
+      })
 
-      return res.status(201).json(insertRes.rows[0])
+      return res.status(200).json({
+        id: Number(id),
+        store_id: storeId,
+        name,
+        slug: cleanSlug,
+        description,
+        banner_image,
+      })
     }
 
     if (req.method === 'DELETE') {
-      const id = url.searchParams.get('id') || req.body?.id
-      if (!id) return res.status(400).json({ error: 'Missing collection id' })
+      const colId = url.searchParams.get('id') || req.body?.id
+      if (!colId) {
+        return res.status(400).json({ error: 'Missing collection ID' })
+      }
 
-      await db.query('DELETE FROM collections WHERE id = $1 AND store_id = $2;', [id, storeId])
-      return res.status(200).json({ success: true, id })
+      await db.execute({
+        sql: `DELETE FROM collections WHERE id = ? AND store_id = ?`,
+        args: [Number(colId), storeId],
+      })
+
+      return res.status(200).json({ success: true })
     }
 
-    res.setHeader('Allow', ['GET', 'POST', 'DELETE'])
-    res.status(405).end(`Method ${req.method} Not Allowed`)
-  } catch (error) {
-    console.error('API /collections error:', error)
-    res.status(500).json({ error: error.message })
+    return res.status(405).json({ error: 'Method not allowed' })
+  } catch (err) {
+    console.error('Collections API Error:', err)
+    return res.status(500).json({ error: err.message })
   }
 }

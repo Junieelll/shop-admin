@@ -115,7 +115,7 @@ export default function Navbar({
               : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border-neutral-200 dark:border-neutral-700'
           }`}>
             <span className={`w-2 h-2 rounded-full ${isDbConnected ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'}`} />
-            <span>{isDbConnected ? 'Neon DB Live' : (isSyncing ? 'Syncing...' : 'Connecting DB')}</span>
+            <span>{isDbConnected ? 'Turso DB Live' : (isSyncing ? 'Syncing...' : 'Connecting DB')}</span>
           </div>
 
           {/* Dark / Light Mode Toggle */}

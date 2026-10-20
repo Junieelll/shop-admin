@@ -2,45 +2,17 @@ import { useEffect, useState } from 'react'
 import { authClient } from '../lib/auth'
 import { AuthContext } from './authContext'
 
-// Fetch real user profile from DB (includes image which Neon Auth session may omit)
-async function fetchUserFromDb(userId) {
-  try {
-    const res = await fetch('/api/user-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId })
-    })
-    if (res.ok) {
-      const data = await res.json()
-      return data.user || null
-    }
-  } catch {
-    // silently fail – fallback to session user
-  }
-  return null
-}
-
-// Merge DB user data and cached avatar into session user object
+// Build full user profile from custom session user
 async function buildFullUser(sessionUser) {
   if (!sessionUser) return null
 
-  // Always fetch from DB to get the latest image field
-  const dbUser = await fetchUserFromDb(sessionUser.id)
-
   const merged = { ...sessionUser }
-  if (dbUser?.image) {
-    merged.image = dbUser.image
-    localStorage.setItem('admin_user_avatar', dbUser.image)
-  } else if (!merged.image) {
-    // Last resort: use localStorage cache
+  if (merged.image) {
+    localStorage.setItem('admin_user_avatar', merged.image)
+  } else {
     const cachedAvatar = localStorage.getItem('admin_user_avatar')
     if (cachedAvatar) merged.image = cachedAvatar
-  } else {
-    localStorage.setItem('admin_user_avatar', merged.image)
   }
-
-  if (dbUser?.name) merged.name = dbUser.name
-  if (dbUser?.email) merged.email = dbUser.email
 
   return merged
 }

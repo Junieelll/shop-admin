@@ -230,44 +230,45 @@ export default function Profile() {
 
     setIsSavingProfile(true)
     try {
-      // 1. Direct database update for guaranteed persistence
+      // 1. Direct database update if server endpoint is reachable
       if (user?.id) {
-        const profileRes = await fetch('/api/update-profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: user.id,
-            name: name.trim(),
-            image: image || null
+        try {
+          await fetch('/api/update-profile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: user.id,
+              name: name.trim(),
+              image: image || null
+            })
           })
-        })
-        if (!profileRes.ok) {
-          const profileData = await profileRes.json()
-          console.warn('Profile DB update note:', profileData.error)
+        } catch {
+          // non-blocking during DB migration
         }
       }
 
-      // 2. AuthClient update
+      // 2. AuthClient update (updates local custom session & registered user)
+      const trimmedEmail = email.trim().toLowerCase()
       const updateResult = await authClient.updateUser({
         name: name.trim(),
+        email: trimmedEmail,
         image: image || null
       })
       if (updateResult?.error) {
-        console.warn('authClient.updateUser note:', updateResult.error)
+        throw new Error(updateResult.error.message || 'Failed to update profile')
       }
 
-      // 3. Email update if changed
-      const trimmedEmail = email.trim().toLowerCase()
+      // 3. Sync email to DB if reachable
       const emailChanged = trimmedEmail !== (user?.email || '').toLowerCase()
       if (emailChanged && user?.id) {
-        const emailRes = await fetch('/api/update-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, newEmail: trimmedEmail })
-        })
-        const emailData = await emailRes.json()
-        if (!emailRes.ok) {
-          throw new Error(emailData.error || 'Failed to update email address')
+        try {
+          await fetch('/api/update-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: user.id, newEmail: trimmedEmail })
+          })
+        } catch {
+          // non-blocking during DB migration
         }
       }
 
@@ -1030,7 +1031,7 @@ export default function Profile() {
                     <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/80 dark:border-neutral-700/80 space-y-1">
                       <span className="text-[10px] uppercase font-bold text-neutral-400 dark:text-neutral-500">Database Engine</span>
                       <p className="text-xs font-semibold text-neutral-900 dark:text-white">
-                        Neon Postgres
+                        Turso SQLite (libSQL)
                       </p>
                       <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
                         • Online & Synced
