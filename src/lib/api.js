@@ -1,15 +1,8 @@
 // Turso Serverless SQLite Driver — works in browser, edge, and Node.js
 import { createClient } from '@libsql/client/web'
 
-const TURSO_URL =
-  (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_TURSO_DATABASE_URL) ||
-  (typeof process !== 'undefined' && process?.env?.TURSO_DATABASE_URL) ||
-  ''
-
-const TURSO_TOKEN =
-  (typeof import.meta !== 'undefined' && import.meta?.env?.VITE_TURSO_AUTH_TOKEN) ||
-  (typeof process !== 'undefined' && process?.env?.TURSO_AUTH_TOKEN) ||
-  ''
+const TURSO_URL = import.meta.env.VITE_TURSO_DATABASE_URL || ''
+const TURSO_TOKEN = import.meta.env.VITE_TURSO_AUTH_TOKEN || ''
 
 export const db = TURSO_URL
   ? createClient({ url: TURSO_URL, authToken: TURSO_TOKEN })
