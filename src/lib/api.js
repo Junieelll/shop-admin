@@ -11,10 +11,9 @@ const TURSO_TOKEN =
   (typeof process !== 'undefined' && process?.env?.TURSO_AUTH_TOKEN) ||
   ''
 
-export const db = createClient({
-  url: TURSO_URL,
-  authToken: TURSO_TOKEN,
-})
+export const db = TURSO_URL
+  ? createClient({ url: TURSO_URL, authToken: TURSO_TOKEN })
+  : null
 
 /**
  * Helper to normalize SQLite rows into clean frontend product models
