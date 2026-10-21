@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '../context/useToast'
@@ -9,8 +9,13 @@ import ProductModal from '../components/dashboard/ProductModal'
 import DeleteProductModal from '../components/dashboard/DeleteProductModal'
 import Pagination from '../components/common/Pagination'
 import {
-  fetchCollectionsFromDb,
-  fetchProductsFromDb,
+  fetchCollectionsLightFromDb,
+  fetchCollectionProductsFromDb,
+  fetchLinkableProductsFromDb,
+  fetchProductByIdFromDb,
+  fetchProductEditDataFromDb,
+  fetchStoreCountsFromDb,
+  invalidateStoreCounts,
   createProductInDb,
   updateProductInDb,
   toggleFeaturedInDb,
@@ -18,6 +23,26 @@ import {
   addProductToCollectionInDb,
   removeProductFromCollectionInDb
 } from '../lib/api'
+
+const byIdDesc = (a, b) => b.id - a.id
+
+const emptyForm = (collectionId) => ({
+  name: '',
+  price: '',
+  image: '',
+  images: [],
+  featured: false,
+  description: '',
+  sizes: ['M'],
+  collection_ids: [Number(collectionId)],
+  category: 'Perfume',
+  volume: '100ml',
+  scent: '',
+  material: '',
+  gemstone: '',
+  frame_shape: 'Aviator',
+  lens_color: 'Black'
+})
 
 export default function CollectionProducts() {
   const { id } = useParams()
@@ -49,10 +74,11 @@ export default function CollectionProducts() {
   // Mobile sidebar
   const [isOpenMobile, setIsOpenMobile] = useState(false)
 
-  // Data states
+  // Data states: only THIS collection's products live here
   const [collection, setCollection] = useState(null)
-  const [allProducts, setAllProducts] = useState([])
+  const [collectionProducts, setCollectionProducts] = useState([])
   const [collections, setCollections] = useState([])
+  const [counts, setCounts] = useState({ products: 0, featured: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [isDbConnected, setIsDbConnected] = useState(false)
 
@@ -67,45 +93,75 @@ export default function CollectionProducts() {
   const [isProductModalOpen, setIsProductModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [productToDelete, setProductToDelete] = useState(null)
-  const [pickerSearch, setPickerSearch] = useState('')
 
   // Form state for creating new product inside this collection
-  const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    image: '',
-    images: [],
-    featured: false,
-    description: '',
-    sizes: ['M'],
-    collection_ids: [Number(id)],
-    category: 'Perfume',
-    volume: '100ml',
-    scent: '',
-    material: '',
-    gemstone: '',
-    frame_shape: 'Aviator',
-    lens_color: 'Black'
-  })
+  const [formData, setFormData] = useState(() => emptyForm(id))
 
-  // Load collection and products
+  // ── Link-existing picker (lazy, paginated, server-side search) ──
+  const [pickerSearch, setPickerSearch] = useState('')
+  const [debouncedPickerSearch, setDebouncedPickerSearch] = useState('')
+  const [pickerItems, setPickerItems] = useState([])
+  const [pickerLoading, setPickerLoading] = useState(false)
+  const [pickerHasMore, setPickerHasMore] = useState(false)
+  const pickerReq = useRef(0)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPickerSearch(pickerSearch), 350)
+    return () => clearTimeout(t)
+  }, [pickerSearch])
+
+  const loadPicker = useCallback(async (beforeId = null) => {
+    const reqId = ++pickerReq.current
+    setPickerLoading(true)
+    const res = await fetchLinkableProductsFromDb({
+      storeId: selectedStore,
+      collectionId: id,
+      search: debouncedPickerSearch,
+      beforeId,
+      limit: 20
+    })
+    if (reqId !== pickerReq.current) return // stale response (typed again / closed)
+    if (res.success) {
+      setPickerItems(prev => (beforeId == null ? res.data : [...prev, ...res.data]))
+      setPickerHasMore(res.hasMore)
+    } else {
+      showToast(res.error || 'Failed to load products', 'error')
+    }
+    setPickerLoading(false)
+  }, [selectedStore, id, debouncedPickerSearch, showToast])
+
+  // Nothing is fetched until the picker is opened (or the search changes while open)
+  useEffect(() => {
+    if (!isAddPickerOpen) return
+    loadPicker(null)
+  }, [isAddPickerOpen, loadPicker])
+
+  const closePicker = () => {
+    pickerReq.current++ // cancel any in-flight request
+    setIsAddPickerOpen(false)
+    setPickerSearch('')
+    setDebouncedPickerSearch('')
+    setPickerItems([])
+    setPickerHasMore(false)
+    setPickerLoading(false)
+  }
+
+  // Initial load: 3 small queries instead of the whole store
   const loadData = useCallback(async () => {
     try {
-      const [colRes, prodRes] = await Promise.all([
-        fetchCollectionsFromDb(selectedStore),
-        fetchProductsFromDb(selectedStore)
+      const [colRes, prodRes, countRes] = await Promise.all([
+        fetchCollectionsLightFromDb(selectedStore),
+        fetchCollectionProductsFromDb(id, selectedStore),
+        fetchStoreCountsFromDb(selectedStore)
       ])
 
-      if (colRes.success && colRes.data) {
+      if (colRes.success) {
         setCollections(colRes.data)
-        const current = colRes.data.find(c => Number(c.id) === Number(id))
-        setCollection(current || null)
+        setCollection(colRes.data.find(c => Number(c.id) === Number(id)) || null)
         setIsDbConnected(true)
       }
-
-      if (prodRes.success && prodRes.data) {
-        setAllProducts(prodRes.data)
-      }
+      if (prodRes.success) setCollectionProducts(prodRes.data)
+      if (countRes.success) setCounts(countRes.data)
     } catch (err) {
       console.error('Error loading collection products:', err)
       showToast('Database error loading collection', 'error')
@@ -130,12 +186,7 @@ export default function CollectionProducts() {
     }
   }, [loadData])
 
-  // Products belonging to this collection
-  const collectionProducts = useMemo(() => {
-    return allProducts.filter(p => (p.collection_ids || []).includes(Number(id)))
-  }, [allProducts, id])
-
-  // Filtered by search
+  // Filtered by search (client-side, only over this collection's products)
   const filteredProducts = useMemo(() => {
     if (!searchQuery.trim()) return collectionProducts
     const q = searchQuery.toLowerCase()
@@ -163,22 +214,11 @@ export default function CollectionProducts() {
     return filteredProducts.slice(start, start + itemsPerPage)
   }, [filteredProducts, currentPage, itemsPerPage])
 
-  // Available products in store that are NOT yet in this collection
-  const unassignedProducts = useMemo(() => {
-    const assignedIds = new Set(collectionProducts.map(p => p.id))
-    let unassigned = allProducts.filter(p => p.store_id === selectedStore && !assignedIds.has(p.id))
-    if (pickerSearch.trim()) {
-      const q = pickerSearch.toLowerCase()
-      unassigned = unassigned.filter(p => p.name.toLowerCase().includes(q))
-    }
-    return unassigned
-  }, [allProducts, collectionProducts, selectedStore, pickerSearch])
+  const featuredCount = counts.featured
 
-  const featuredCount = allProducts.filter(p => p.store_id === selectedStore && p.featured).length
-
-  // Handlers
+  // ───────── Handlers (local state updates, NO full reloads) ─────────
   const handleToggleFeatured = async (productId) => {
-    const current = allProducts.find(p => p.id === productId)
+    const current = collectionProducts.find(p => p.id === productId)
     const nextFeatured = !current?.featured
 
     if (nextFeatured && featuredCount >= 10) {
@@ -186,86 +226,71 @@ export default function CollectionProducts() {
       return
     }
 
-    setAllProducts(prev => prev.map(p => p.id === productId ? { ...p, featured: nextFeatured } : p))
+    const delta = nextFeatured ? 1 : -1
+    setCollectionProducts(prev => prev.map(p => p.id === productId ? { ...p, featured: nextFeatured } : p))
+    setCounts(c => ({ ...c, featured: c.featured + delta }))
 
     const res = await toggleFeaturedInDb(productId, nextFeatured, selectedStore)
     if (res.success) {
+      invalidateStoreCounts(selectedStore)
       showToast(nextFeatured ? 'Added to featured items' : 'Removed from featured items', 'success')
     } else {
+      // revert locally
+      setCollectionProducts(prev => prev.map(p => p.id === productId ? { ...p, featured: !nextFeatured } : p))
+      setCounts(c => ({ ...c, featured: c.featured - delta }))
       showToast(res.error || 'Failed to update featured status', 'error')
-      loadData()
     }
   }
 
   const handleRemoveFromCollection = async (productId, productName) => {
-    // Optimistic UI update
-    setAllProducts(prev => prev.map(p => {
-      if (p.id === productId) {
-        return {
-          ...p,
-          collection_ids: (p.collection_ids || []).filter(cId => Number(cId) !== Number(id))
-        }
-      }
-      return p
-    }))
+    const removed = collectionProducts.find(p => p.id === productId)
+    setCollectionProducts(prev => prev.filter(p => p.id !== productId))
 
     const res = await removeProductFromCollectionInDb(productId, id)
     if (res.success) {
       showToast(`Removed "${productName}" from ${collection?.name || 'collection'}.`, 'success')
-      loadData()
     } else {
+      if (removed) setCollectionProducts(prev => [removed, ...prev].sort(byIdDesc))
       showToast(res.error || 'Failed to remove product from collection', 'error')
-      loadData()
     }
   }
 
   const handleAddProductToCollection = async (product) => {
-    // Optimistic UI update
-    setAllProducts(prev => prev.map(p => {
-      if (p.id === product.id) {
-        return {
-          ...p,
-          collection_ids: [...(p.collection_ids || []), Number(id)]
-        }
-      }
-      return p
-    }))
+    // Remove from picker immediately
+    setPickerItems(prev => prev.filter(p => p.id !== product.id))
 
     const res = await addProductToCollectionInDb(product.id, id)
-    if (res.success) {
-      showToast(`Added "${product.name}" to ${collection?.name || 'collection'}.`, 'success')
-      loadData()
-    } else {
+    if (!res.success) {
+      setPickerItems(prev => [product, ...prev].sort(byIdDesc))
       showToast(res.error || 'Failed to add product to collection', 'error')
-      loadData()
+      return
     }
+
+    // Fetch just this one product instead of reloading the store
+    const full = await fetchProductByIdFromDb(product.id, selectedStore)
+    if (full.success && full.data) {
+      setCollectionProducts(prev => [full.data, ...prev.filter(p => p.id !== full.data.id)].sort(byIdDesc))
+    }
+    showToast(`Added "${product.name}" to ${collection?.name || 'collection'}.`, 'success')
   }
 
   const handleOpenAddModal = () => {
     setEditingProduct(null)
-    setFormData({
-      name: '',
-      price: '',
-      image: '',
-      images: [],
-      featured: false,
-      description: '',
-      sizes: ['M'],
-      collection_ids: [Number(id)],
-      category: 'Perfume',
-      volume: '100ml',
-      scent: '',
-      material: '',
-      gemstone: '',
-      frame_shape: 'Aviator',
-      lens_color: 'Black'
-    })
+    setFormData(emptyForm(id))
     setIsProductModalOpen(true)
   }
 
-  const handleOpenEditModal = (product) => {
+  const handleOpenEditModal = async (product) => {
+    // Load gallery + collection links for this one product BEFORE opening,
+    // so saving can never wipe collection links with incomplete data.
+    const res = await fetchProductEditDataFromDb(product.id, selectedStore)
+    if (!res.success) {
+      showToast(res.error || 'Failed to load product details', 'error')
+      return
+    }
+    const gallery = res.data.images.length ? res.data.images : (product.image ? [product.image] : [])
+
     setEditingProduct(product)
-    const gallery = product.images?.length ? product.images : (product.image ? [product.image] : [])
     setFormData({
       name: product.name,
       price: product.price,
@@ -274,7 +299,7 @@ export default function CollectionProducts() {
       featured: product.featured,
       description: product.description || '',
       sizes: product.attributes?.sizes || ['M'],
-      collection_ids: product.collection_ids || [],
+      collection_ids: res.data.collection_ids,
       category: product.category_name || 'Perfume',
       volume: product.attributes?.volume || '100ml',
       scent: product.attributes?.scent || '',
@@ -286,7 +311,7 @@ export default function CollectionProducts() {
     setIsProductModalOpen(true)
   }
 
-  const handleSaveProduct = (e) => {
+  const handleSaveProduct = async (e) => {
     e.preventDefault()
     if (!formData.name || !formData.price) {
       showToast('Please fill in product name and price.', 'error')
@@ -335,44 +360,49 @@ export default function CollectionProducts() {
       collection_ids: targetColIds
     }
 
-    if (editingProduct) {
-      updateProductInDb({ ...productPayload, id: editingProduct.id }, selectedStore).then((res) => {
-        if (res.success) {
-          showToast(`Product "${productPayload.name}" updated successfully.`, 'success')
-        } else {
-          showToast(res.error || 'Failed to update product', 'error')
-        }
-        loadData()
-      })
-    } else {
-      createProductInDb(productPayload, selectedStore).then((res) => {
-        if (res.success) {
-          showToast(`Product "${productPayload.name}" created and added to collection!`, 'success')
-        } else {
-          showToast(res.error || 'Failed to create product', 'error')
-        }
-        loadData()
-      })
-    }
-
     setIsProductModalOpen(false)
+    const featuredDelta = (willBeFeatured ? 1 : 0) - (wasFeatured ? 1 : 0)
+
+    if (editingProduct) {
+      const res = await updateProductInDb({ ...productPayload, id: editingProduct.id }, selectedStore)
+      if (res.success && res.data) {
+        setCollectionProducts(prev => prev.map(p => p.id === editingProduct.id ? res.data : p))
+        setCounts(c => ({ ...c, featured: c.featured + featuredDelta }))
+        invalidateStoreCounts(selectedStore)
+        showToast(`Product "${productPayload.name}" updated successfully.`, 'success')
+      } else {
+        showToast(res.error || 'Failed to update product', 'error')
+      }
+    } else {
+      const res = await createProductInDb(productPayload, selectedStore)
+      if (res.success && res.data) {
+        setCollectionProducts(prev => [res.data, ...prev].sort(byIdDesc))
+        setCounts(c => ({ products: c.products + 1, featured: c.featured + featuredDelta }))
+        invalidateStoreCounts(selectedStore)
+        showToast(`Product "${productPayload.name}" created and added to collection!`, 'success')
+      } else {
+        showToast(res.error || 'Failed to create product', 'error')
+      }
+    }
   }
 
   const confirmDeleteProduct = async () => {
     if (!productToDelete) return
-    const idToDelete = productToDelete.id
-    const name = productToDelete.name
-
-    setAllProducts(prev => prev.filter(p => p.id !== idToDelete))
+    const deleted = productToDelete
+    setCollectionProducts(prev => prev.filter(p => p.id !== deleted.id))
     setProductToDelete(null)
 
-    const res = await deleteProductFromDb(idToDelete, selectedStore)
+    const res = await deleteProductFromDb(deleted.id, selectedStore)
     if (res.success) {
-      showToast(`Product "${name}" deleted.`, 'success')
-      loadData()
+      setCounts(c => ({
+        products: Math.max(0, c.products - 1),
+        featured: Math.max(0, c.featured - (deleted.featured ? 1 : 0))
+      }))
+      invalidateStoreCounts(selectedStore)
+      showToast(`Product "${deleted.name}" deleted.`, 'success')
     } else {
+      setCollectionProducts(prev => [deleted, ...prev].sort(byIdDesc))
       showToast(res.error || 'Failed to delete product', 'error')
-      loadData()
     }
   }
 
@@ -387,8 +417,8 @@ export default function CollectionProducts() {
         isDbConnected={isDbConnected}
         isOpenMobile={isOpenMobile}
         onCloseMobile={() => setIsOpenMobile(false)}
-        productsCount={allProducts.filter(p => p.store_id === selectedStore).length}
-        collectionsCount={collections.filter(c => c.store_id === selectedStore).length}
+        productsCount={counts.products}
+        collectionsCount={collections.length}
         onStartTour={() => navigate('/?tour=1')}
       />
 
@@ -714,34 +744,34 @@ export default function CollectionProducts() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsAddPickerOpen(false)}
+                  onClick={closePicker}
                   className="p-1 rounded-lg text-neutral-400 hover:text-black dark:hover:text-white cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
-              {/* Picker Search */}
+              {/* Picker Search (server-side, debounced) */}
               <div className="pt-3 pb-2 shrink-0">
                 <input
                   type="text"
-                  placeholder="Filter available products..."
+                  placeholder="Search available products..."
                   value={pickerSearch}
                   onChange={(e) => setPickerSearch(e.target.value)}
                   className="w-full px-3.5 py-2 text-xs rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-transparent focus:border-neutral-300 outline-none"
                 />
               </div>
 
-              {/* List of unassigned products */}
+              {/* Paginated list of unassigned products */}
               <div className="flex-1 min-h-0 overflow-y-auto space-y-2 py-2 pr-1">
-                {unassignedProducts.length === 0 ? (
+                {pickerItems.length === 0 && !pickerLoading ? (
                   <p className="text-xs text-center text-neutral-400 py-8">
-                    {pickerSearch
+                    {debouncedPickerSearch
                       ? 'No matching products found.'
                       : 'All store products are already linked to this collection!'}
                   </p>
                 ) : (
-                  unassignedProducts.map(p => (
+                  pickerItems.map(p => (
                     <div
                       key={p.id}
                       className="flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors border border-neutral-200/50 dark:border-neutral-700/50"
@@ -750,6 +780,7 @@ export default function CollectionProducts() {
                         <img
                           src={p.image}
                           alt=""
+                          loading="lazy"
                           className="w-10 h-10 rounded-xl object-cover bg-neutral-200 shrink-0"
                         />
                         <div className="min-w-0">
@@ -772,12 +803,26 @@ export default function CollectionProducts() {
                     </div>
                   ))
                 )}
+
+                {pickerLoading && (
+                  <p className="text-xs text-center text-neutral-400 py-3">Loading…</p>
+                )}
+
+                {!pickerLoading && pickerHasMore && (
+                  <button
+                    type="button"
+                    onClick={() => loadPicker(pickerItems[pickerItems.length - 1]?.id)}
+                    className="w-full py-2 text-xs font-semibold rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+                  >
+                    Load more
+                  </button>
+                )}
               </div>
 
               <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex justify-end shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsAddPickerOpen(false)}
+                  onClick={closePicker}
                   className="px-4 py-2 text-xs font-semibold rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 cursor-pointer"
                 >
                   Done
@@ -797,7 +842,7 @@ export default function CollectionProducts() {
         setFormData={setFormData}
         selectedStore={selectedStore}
         storeCollections={collections}
-        featuredCount={featuredCount}
+        featuredCount={counts.featured}
         onSave={handleSaveProduct}
       />
 

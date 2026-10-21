@@ -449,3 +449,200 @@ export async function removeProductFromCollectionInDb(productId, collectionId) {
     return { success: false, error: err.message }
   }
 }
+
+// ───────────────────────────────────────────────────────────────
+// Cheap, targeted queries (keep Turso "rows read" low)
+// Recommended indexes (run once in Turso):
+//   CREATE INDEX IF NOT EXISTS idx_pc_collection ON product_collections(collection_id, product_id);
+//   CREATE INDEX IF NOT EXISTS idx_pc_product ON product_collections(product_id, collection_id);
+//   CREATE INDEX IF NOT EXISTS idx_products_store ON products(store_id);
+//   CREATE INDEX IF NOT EXISTS idx_products_store_featured ON products(store_id, featured);
+//   CREATE INDEX IF NOT EXISTS idx_collections_store ON collections(store_id);
+// ───────────────────────────────────────────────────────────────
+
+/**
+ * Collections without the COUNT/JOIN (the list is small, no need to scan the junction table)
+ */
+export async function fetchCollectionsLightFromDb(storeId = 'selyn') {
+  try {
+    const res = await db.execute({
+      sql: `SELECT id, store_id, name, slug, description, banner_image
+            FROM collections WHERE store_id = ? ORDER BY id ASC`,
+      args: [storeId],
+    })
+    const data = res.rows.map(r => ({
+      id: Number(r.id),
+      store_id: r.store_id,
+      name: r.name,
+      slug: r.slug,
+      description: r.description,
+      banner_image: r.banner_image,
+    }))
+    return { success: true, data }
+  } catch (err) {
+    console.error('Collections light fetch error:', err)
+    return { success: false, error: err.message, data: [] }
+  }
+}
+
+/**
+ * Only the products linked to ONE collection. No `images` column (loaded on edit).
+ */
+export async function fetchCollectionProductsFromDb(collectionId, storeId = 'selyn') {
+  try {
+    const res = await db.execute({
+      sql: `
+        SELECT p.id, p.store_id, p.category_id, c.name AS category_name,
+               p.name, p.price, p.image, p.featured, p.description,
+               p.attributes, p.created_at
+        FROM product_collections pc
+        JOIN products p ON p.id = pc.product_id
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE pc.collection_id = ? AND p.store_id = ?
+        ORDER BY p.id DESC
+      `,
+      args: [Number(collectionId), storeId],
+    })
+    return { success: true, data: res.rows.map(r => normalizeProduct(r)) }
+  } catch (err) {
+    console.error('Collection products fetch error:', err)
+    return { success: false, error: err.message, data: [] }
+  }
+}
+
+/**
+ * Paginated picker query: products NOT yet in the collection.
+ * Keyset pagination (id < beforeId) so page N never re-reads pages 1..N-1.
+ */
+export async function fetchLinkableProductsFromDb({
+  storeId = 'selyn',
+  collectionId,
+  search = '',
+  beforeId = null,
+  limit = 20,
+}) {
+  try {
+    const conds = [
+      'p.store_id = ?',
+      `NOT EXISTS (
+         SELECT 1 FROM product_collections pc
+         WHERE pc.product_id = p.id AND pc.collection_id = ?
+       )`,
+    ]
+    const args = [storeId, Number(collectionId)]
+
+    const q = search.trim()
+    if (q) {
+      conds.push(`p.name LIKE ? ESCAPE '\\'`)
+      args.push(`%${q.replace(/[\\%_]/g, m => '\\' + m)}%`)
+    }
+    if (beforeId != null) {
+      conds.push('p.id < ?')
+      args.push(Number(beforeId))
+    }
+    args.push(limit + 1) // one extra row tells us if there's another page
+
+    const res = await db.execute({
+      sql: `
+        SELECT p.id, p.name, p.price, p.image
+        FROM products p
+        WHERE ${conds.join(' AND ')}
+        ORDER BY p.id DESC
+        LIMIT ?
+      `,
+      args,
+    })
+
+    const rows = res.rows.map(r => ({
+      id: Number(r.id),
+      name: r.name,
+      price: Number(r.price) || 0,
+      image: r.image || '',
+    }))
+    return { success: true, data: rows.slice(0, limit), hasMore: rows.length > limit }
+  } catch (err) {
+    console.error('Linkable products fetch error:', err)
+    return { success: false, error: err.message, data: [], hasMore: false }
+  }
+}
+
+/**
+ * One full product row (used after linking, so we don't refetch the collection)
+ */
+export async function fetchProductByIdFromDb(id, storeId = 'selyn') {
+  try {
+    const res = await db.execute({
+      sql: `
+        SELECT p.*, c.name AS category_name
+        FROM products p
+        LEFT JOIN categories c ON p.category_id = c.id
+        WHERE p.id = ? AND p.store_id = ?
+      `,
+      args: [Number(id), storeId],
+    })
+    const row = res.rows[0]
+    return { success: true, data: row ? normalizeProduct(row) : null }
+  } catch (err) {
+    console.error('Product by id fetch error:', err)
+    return { success: false, error: err.message, data: null }
+  }
+}
+
+/**
+ * Gallery + collection ids for ONE product (loaded only when the edit modal opens)
+ */
+export async function fetchProductEditDataFromDb(id, storeId = 'selyn') {
+  try {
+    const [imgRes, colRes] = await db.batch([
+      { sql: `SELECT image, images FROM products WHERE id = ? AND store_id = ?`, args: [Number(id), storeId] },
+      { sql: `SELECT collection_id FROM product_collections WHERE product_id = ?`, args: [Number(id)] },
+    ], 'read')
+
+    const row = imgRes.rows[0]
+    let images = []
+    try {
+      images = typeof row?.images === 'string' ? JSON.parse(row.images) : (row?.images || [])
+    } catch {
+      images = []
+    }
+    if (!images.length && row?.image) images = [row.image]
+
+    return {
+      success: true,
+      data: { images, collection_ids: colRes.rows.map(r => Number(r.collection_id)) },
+    }
+  } catch (err) {
+    console.error('Product edit data fetch error:', err)
+    return { success: false, error: err.message, data: null }
+  }
+}
+
+/**
+ * Store counts for the sidebar + featured limit. Cached for 5 minutes.
+ */
+const countsCache = new Map()
+export async function fetchStoreCountsFromDb(storeId = 'selyn') {
+  const hit = countsCache.get(storeId)
+  if (hit && Date.now() - hit.t < 5 * 60 * 1000) return { success: true, data: hit.v }
+  try {
+    const res = await db.execute({
+      sql: `SELECT
+              (SELECT COUNT(*) FROM products WHERE store_id = ?) AS products,
+              (SELECT COUNT(*) FROM products WHERE store_id = ? AND featured = 1) AS featured`,
+      args: [storeId, storeId],
+    })
+    const v = {
+      products: Number(res.rows[0].products) || 0,
+      featured: Number(res.rows[0].featured) || 0,
+    }
+    countsCache.set(storeId, { t: Date.now(), v })
+    return { success: true, data: v }
+  } catch (err) {
+    console.error('Store counts fetch error:', err)
+    return { success: false, error: err.message, data: { products: 0, featured: 0 } }
+  }
+}
+
+export function invalidateStoreCounts(storeId) {
+  countsCache.delete(storeId)
+}
