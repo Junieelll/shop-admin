@@ -9,6 +9,22 @@ export const db = TURSO_URL
   : null
 
 /**
+ * Bump the storefront's "catalog version" so it knows to refetch.
+ * Needs table catalog_meta (see SQL). Never throws: a failure here must not break admin saves.
+ */
+async function touchCatalogVersion() {
+  try {
+    await db.execute({
+      sql: `INSERT INTO catalog_meta (key, value) VALUES ('version', ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      args: [String(Date.now())],
+    })
+  } catch (err) {
+    console.warn('Could not bump catalog version:', err)
+  }
+}
+
+/**
  * Helper to normalize SQLite rows into clean frontend product models
  */
 function normalizeProduct(p, collectionsMap = {}) {
@@ -174,6 +190,7 @@ export async function createProductInDb(product, storeId = 'selyn') {
     })
 
     const created = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : { id: newId, name, price, image }
+    await touchCatalogVersion()
     return { success: true, data: created }
   } catch (err) {
     console.error('Turso SQL Create Error:', err)
@@ -237,6 +254,7 @@ export async function updateProductInDb(product, storeId = 'selyn') {
     })
 
     const updated = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : product
+    await touchCatalogVersion()
     return { success: true, data: updated }
   } catch (err) {
     console.error('Turso SQL Update Error:', err)
@@ -258,6 +276,7 @@ export async function toggleFeaturedInDb(id, featured, storeId = 'selyn') {
       `,
       args: [val, Number(id), storeId],
     })
+    await touchCatalogVersion()
     return { success: true, data: { id: Number(id), featured: Boolean(featured) } }
   } catch (err) {
     console.error('Turso SQL Toggle Featured Error:', err)
@@ -274,6 +293,7 @@ export async function deleteProductFromDb(id, storeId = 'selyn') {
       sql: `DELETE FROM products WHERE id = ? AND store_id = ?`,
       args: [Number(id), storeId],
     })
+    await touchCatalogVersion()
     return { success: true }
   } catch (err) {
     console.error('Turso SQL Delete Error:', err)
@@ -341,6 +361,7 @@ export async function createCollectionInDb(col, storeId = 'selyn') {
     })
 
     const newId = Number(res.lastInsertRowid)
+    await touchCatalogVersion()
     return {
       success: true,
       data: {
@@ -368,6 +389,7 @@ export async function deleteCollectionFromDb(id, storeId = 'selyn') {
       sql: `DELETE FROM collections WHERE id = ? AND store_id = ?`,
       args: [Number(id), storeId],
     })
+    await touchCatalogVersion()
     return { success: true }
   } catch (err) {
     console.error('Turso SQL Collection Delete Error:', err)
@@ -394,6 +416,7 @@ export async function updateCollectionInDb(col, storeId = 'selyn') {
       `,
       args: [name, slug, description, bannerImage, id, storeId],
     })
+    await touchCatalogVersion()
 
     return {
       success: true,
@@ -424,6 +447,7 @@ export async function addProductToCollectionInDb(productId, collectionId) {
       `,
       args: [Number(productId), Number(collectionId)],
     })
+    await touchCatalogVersion()
     return { success: true }
   } catch (err) {
     console.error('Add product to collection error:', err)
@@ -443,6 +467,7 @@ export async function removeProductFromCollectionInDb(productId, collectionId) {
       `,
       args: [Number(productId), Number(collectionId)],
     })
+    await touchCatalogVersion()
     return { success: true }
   } catch (err) {
     console.error('Remove product from collection error:', err)
