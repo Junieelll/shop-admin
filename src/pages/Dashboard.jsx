@@ -669,7 +669,7 @@ export default function Dashboard() {
 
       {/* ── DELETE PRODUCT CONFIRMATION MODAL ── */}
       <DeleteProductModal
-        product={productToDelete}
+        productToDelete={productToDelete}
         onClose={() => setProductToDelete(null)}
         onConfirm={confirmDeleteProduct}
       />

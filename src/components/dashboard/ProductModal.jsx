@@ -72,6 +72,19 @@ export default function ProductModal({
   const [useUrlInput, setUseUrlInput] = useState(false)
   const [customUrl, setCustomUrl] = useState('')
 
+  const isLuxe = selectedStore === 'luxe-haven'
+  const isPerfumeCat = !formData.category || formData.category.includes('perfume') || (!formData.category.includes('eyewear') && !formData.category.includes('glasses'))
+
+  const categoryOptions = useMemo(() => {
+    if (storeCategories && storeCategories.length > 0) {
+      return storeCategories.map(cat => ({
+        value: cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        label: cat.name
+      }))
+    }
+    return LUXE_CATEGORIES
+  }, [storeCategories])
+
   if (!isOpen) return null
 
   // Multi-file Upload (to S3 with local preview fallback)
@@ -193,18 +206,6 @@ export default function ProductModal({
     })
   }
 
-  const isLuxe = selectedStore === 'luxe-haven'
-  const isPerfumeCat = !formData.category || formData.category.includes('perfume') || (!formData.category.includes('eyewear') && !formData.category.includes('glasses'))
-
-  const categoryOptions = useMemo(() => {
-    if (storeCategories && storeCategories.length > 0) {
-      return storeCategories.map(cat => ({
-        value: cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        label: cat.name
-      }))
-    }
-    return LUXE_CATEGORIES
-  }, [storeCategories])
 
   return (
     <AnimatePresence>
