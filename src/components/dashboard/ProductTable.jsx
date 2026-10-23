@@ -10,6 +10,8 @@ export default function ProductTable({
   onDelete,
   onOpenAddModal
 }) {
+  const isLuxe = selectedStore === 'luxe-haven'
+
   if (isLoading) {
     return (
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 p-6 space-y-4">
@@ -57,9 +59,9 @@ export default function ProductTable({
             <tr className="border-b border-neutral-200/70 dark:border-neutral-800 text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
               <th className="py-3.5 px-4">Product</th>
               <th className="py-3.5 px-4">Price</th>
-              <th className="py-3.5 px-4">{selectedStore === 'selyn' ? 'Sizes' : 'Attributes'}</th>
-              <th className="py-3.5 px-4">Collections</th>
-              <th className="py-3.5 px-4 text-center">Featured</th>
+              <th className="py-3.5 px-4">{isLuxe ? 'Specifications' : 'Sizes'}</th>
+              <th className="py-3.5 px-4">{isLuxe ? 'Category' : 'Collections'}</th>
+              <th className="py-3.5 px-4 text-center">{isLuxe ? 'Bestseller' : 'Featured'}</th>
               <th className="py-3.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
@@ -68,6 +70,9 @@ export default function ProductTable({
               {products.map((product) => {
                 const sizes = product.attributes?.sizes || []
                 const galleryCount = (product.images || []).length
+                const brand = product.attributes?.brand
+                const volume = product.attributes?.volume
+                const concentration = product.attributes?.concentration || product.attributes?.origin
 
                 return (
                   <motion.tr
@@ -95,6 +100,11 @@ export default function ProductTable({
                           )}
                         </div>
                         <div className="min-w-0">
+                          {isLuxe && brand && (
+                            <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+                              {brand}
+                            </p>
+                          )}
                           <p className="font-semibold text-neutral-900 dark:text-white text-sm truncate max-w-xs">
                             {product.name}
                           </p>
@@ -113,7 +123,7 @@ export default function ProductTable({
                     {/* Sizes or Specs */}
                     <td className="py-3 px-4">
                       <div className="flex flex-wrap gap-1 max-w-xs">
-                        {selectedStore === 'selyn' ? (
+                        {!isLuxe ? (
                           sizes.map(s => (
                             <span
                               key={s}
@@ -123,37 +133,56 @@ export default function ProductTable({
                             </span>
                           ))
                         ) : (
-                          Object.entries(product.attributes || {}).map(([k, v]) => (
-                            <span
-                              key={k}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
-                            >
-                              {v}
-                            </span>
-                          ))
+                          <>
+                            {volume && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                                {volume}
+                              </span>
+                            )}
+                            {concentration && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                                {concentration}
+                              </span>
+                            )}
+                            {product.attributes?.notes && (
+                              <span className="px-2 py-0.5 rounded-md text-[10px] text-neutral-400 truncate max-w-xs block">
+                                {product.attributes.notes}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
 
-                    {/* Collections */}
+                    {/* Category or Collections */}
                     <td className="py-3 px-4">
-                      {(product.collections || []).length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-xs">
-                          {(product.collections || []).map(c => (
-                            <span
-                              key={c.id || c.name}
-                              className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200/50 dark:border-neutral-700/50"
-                            >
-                              {c.name}
-                            </span>
-                          ))}
-                        </div>
+                      {isLuxe ? (
+                        product.category_name ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200/50 dark:border-neutral-700/50">
+                            {product.category_name}
+                          </span>
+                        ) : (
+                          <span className="text-neutral-400 text-[11px]">—</span>
+                        )
                       ) : (
-                        <span className="text-neutral-400 text-[11px]">—</span>
+                        (product.collections || []).length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {(product.collections || []).map(c => (
+                              <span
+                                key={c.id || c.name}
+                                className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200/50 dark:border-neutral-700/50"
+                              >
+                                {c.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-neutral-400 text-[11px]">—</span>
+                        )
                       )}
                     </td>
 
-                    {/* Featured */}
+                    {/* Featured / Bestseller */}
                     <td className="py-3 px-4 text-center">
                       <button
                         type="button"
@@ -163,7 +192,11 @@ export default function ProductTable({
                             ? 'bg-amber-400 text-white shadow-xs'
                             : 'text-neutral-300 dark:text-neutral-700 hover:text-neutral-500'
                         }`}
-                        title={product.featured ? 'Featured on homepage' : 'Mark as featured'}
+                        title={
+                          product.featured
+                            ? (isLuxe ? 'Bestseller on homepage' : 'Featured on homepage')
+                            : (isLuxe ? 'Mark as bestseller' : 'Mark as featured')
+                        }
                       >
                         <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
                           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />

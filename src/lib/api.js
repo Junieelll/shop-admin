@@ -9,6 +9,54 @@ export const db = TURSO_URL
   : null
 
 /**
+ * Check if a URL belongs to our S3/Neon object storage bucket
+ * (skip external URLs, base64 data URIs, and relative paths)
+ */
+function isS3Url(url) {
+  if (!url || typeof url !== 'string') return false
+  if (url.startsWith('data:')) return false
+  if (url.startsWith('/')) return false
+  // Check if it's from our Neon storage endpoint
+  try {
+    const endpoint = (import.meta.env.VITE_AWS_ENDPOINT_URL_S3 || '').replace(/\/$/, '')
+    if (endpoint && url.startsWith(endpoint)) return true
+    // Also match the pattern used in upload.js
+    if (url.includes('.storage.') && url.includes('neon.tech')) return true
+  } catch {
+    // ignore
+  }
+  return false
+}
+
+/**
+ * Delete images from S3/Neon object storage bucket.
+ * Filters to only delete URLs that actually belong to our storage bucket.
+ * Safe to call with any mix of S3 URLs, external URLs, or base64 — non-S3 are skipped.
+ */
+export async function deleteImagesFromStorage(imageUrls = []) {
+  const s3Urls = imageUrls.filter(isS3Url)
+  if (s3Urls.length === 0) return { success: true, deleted: 0 }
+
+  try {
+    const res = await fetch('/api/delete-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls: s3Urls }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      return { success: true, deleted: data.deleted || 0 }
+    }
+    const err = await res.json().catch(() => ({}))
+    console.warn('S3 delete warning:', err)
+    return { success: false, error: err.error || 'Delete failed' }
+  } catch (err) {
+    console.error('S3 delete error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
  * Helper to normalize SQLite rows into clean frontend product models
  */
 function normalizeProduct(p, collectionsMap = {}) {
@@ -33,6 +81,7 @@ function normalizeProduct(p, collectionsMap = {}) {
     store_id: p.store_id,
     category_id: p.category_id ? Number(p.category_id) : null,
     category_name: p.category_name || null,
+    category_slug: p.category_slug || null,
     name: p.name || '',
     price: Number(p.price) || 0,
     image: p.image || '',
@@ -47,11 +96,75 @@ function normalizeProduct(p, collectionsMap = {}) {
 }
 
 /**
+ * Broadcast an instant sync event to any open storefront tabs
+ */
+export function notifyCatalogUpdated(storeId = 'luxe-haven') {
+  try {
+    const timestamp = Date.now().toString()
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`catalog_updated_${storeId}`, timestamp)
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel(`shop_catalog_sync_${storeId}`)
+        bc.postMessage({ storeId, timestamp })
+        bc.close()
+      }
+    }
+  } catch (e) {
+    console.warn('Sync broadcast warning:', e)
+  }
+}
+
+/**
+ * Fetch categories for a specific store from Turso SQLite
+ */
+export async function fetchCategoriesFromDb(storeId = 'luxe-haven') {
+  try {
+    const res = await db.execute({
+      sql: `SELECT id, store_id, name, slug FROM categories WHERE store_id = ? ORDER BY id ASC`,
+      args: [storeId],
+    })
+    return { success: true, data: res.rows }
+  } catch (err) {
+    console.error('Turso SQL Categories Fetch Error:', err)
+    return { success: false, error: err.message, data: [] }
+  }
+}
+
+/**
  * Fetch products directly from Turso SQLite
- * OPTIMIZED: Runs product & collection junction queries in parallel (cuts latency in half)
+ * OPTIMIZED: Skips collection queries for stores without collections (e.g. luxe-haven)
  */
 export async function fetchProductsFromDb(storeId = 'selyn') {
   try {
+    if (storeId === 'luxe-haven') {
+      const productsRes = await db.execute({
+        sql: `
+          SELECT 
+            p.id,
+            p.store_id,
+            p.category_id,
+            c.name as category_name,
+            c.slug as category_slug,
+            p.name,
+            p.price,
+            p.image,
+            p.images,
+            p.featured,
+            p.description,
+            p.attributes,
+            p.created_at
+          FROM products p
+          LEFT JOIN categories c ON p.category_id = c.id
+          WHERE p.store_id = ?
+          ORDER BY p.id DESC
+        `,
+        args: [storeId],
+      })
+
+      const data = productsRes.rows.map(p => normalizeProduct(p))
+      return { success: true, data }
+    }
+
     const [productsRes, pcRes] = await Promise.all([
       db.execute({
         sql: `
@@ -60,6 +173,7 @@ export async function fetchProductsFromDb(storeId = 'selyn') {
             p.store_id,
             p.category_id,
             c.name as category_name,
+            c.slug as category_slug,
             p.name,
             p.price,
             p.image,
@@ -174,6 +288,7 @@ export async function createProductInDb(product, storeId = 'selyn') {
     })
 
     const created = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : { id: newId, name, price, image }
+    notifyCatalogUpdated(storeId)
     return { success: true, data: created }
   } catch (err) {
     console.error('Turso SQL Create Error:', err)
@@ -237,6 +352,7 @@ export async function updateProductInDb(product, storeId = 'selyn') {
     })
 
     const updated = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : product
+    notifyCatalogUpdated(storeId)
     return { success: true, data: updated }
   } catch (err) {
     console.error('Turso SQL Update Error:', err)
@@ -258,6 +374,7 @@ export async function toggleFeaturedInDb(id, featured, storeId = 'selyn') {
       `,
       args: [val, Number(id), storeId],
     })
+    notifyCatalogUpdated(storeId)
     return { success: true, data: { id: Number(id), featured: Boolean(featured) } }
   } catch (err) {
     console.error('Turso SQL Toggle Featured Error:', err)
@@ -270,10 +387,41 @@ export async function toggleFeaturedInDb(id, featured, storeId = 'selyn') {
  */
 export async function deleteProductFromDb(id, storeId = 'selyn') {
   try {
+    // 1) Fetch the product's images before deleting
+    const imgRes = await db.execute({
+      sql: `SELECT image, images FROM products WHERE id = ? AND store_id = ?`,
+      args: [Number(id), storeId],
+    })
+
+    // 2) Delete the product from the database
     await db.execute({
       sql: `DELETE FROM products WHERE id = ? AND store_id = ?`,
       args: [Number(id), storeId],
     })
+
+    // 3) Clean up S3 images in the background (don't block the response)
+    const row = imgRes.rows[0]
+    if (row) {
+      let allImages = []
+      try {
+        const parsed = typeof row.images === 'string' ? JSON.parse(row.images) : (row.images || [])
+        allImages = Array.isArray(parsed) ? parsed : []
+      } catch {
+        allImages = []
+      }
+      // Include the main image in case it's not in the images array
+      if (row.image && !allImages.includes(row.image)) {
+        allImages.push(row.image)
+      }
+      // Fire-and-forget: delete from S3 storage
+      if (allImages.length > 0) {
+        deleteImagesFromStorage(allImages).catch(err =>
+          console.warn('Background S3 cleanup warning:', err)
+        )
+      }
+    }
+
+    notifyCatalogUpdated(storeId)
     return { success: true }
   } catch (err) {
     console.error('Turso SQL Delete Error:', err)

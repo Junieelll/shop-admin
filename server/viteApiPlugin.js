@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import productsHandler from '../api/products.js'
 import collectionsHandler from '../api/collections.js'
 import uploadHandler from '../api/upload.js'
+import deleteImageHandler from '../api/delete-image.js'
 import updateEmailHandler from '../api/update-email.js'
 import updateProfileHandler from '../api/update-profile.js'
 import userProfileHandler from '../api/user-profile.js'
@@ -45,6 +46,7 @@ export function viteApiPlugin() {
           pathname !== '/api/products' &&
           pathname !== '/api/collections' &&
           pathname !== '/api/upload' &&
+          pathname !== '/api/delete-image' &&
           pathname !== '/api/update-email' &&
           pathname !== '/api/update-profile' &&
           pathname !== '/api/user-profile'
@@ -101,6 +103,10 @@ export function viteApiPlugin() {
 
           if (pathname === '/api/upload') {
             return await uploadHandler(vercelReq, vercelRes)
+          }
+
+          if (pathname === '/api/delete-image') {
+            return await deleteImageHandler(vercelReq, vercelRes)
           }
 
           if (pathname === '/api/update-email') {

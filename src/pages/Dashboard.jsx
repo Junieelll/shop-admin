@@ -13,6 +13,7 @@ import OnboardingTour from '../components/common/OnboardingTour'
 import {
   fetchProductsFromDb,
   fetchProductImagesFromDb,
+  fetchCategoriesFromDb,
   createProductInDb,
   updateProductInDb,
   toggleFeaturedInDb,
@@ -41,6 +42,8 @@ export default function Dashboard() {
     return localStorage.getItem('admin_selected_store') || 'selyn'
   })
 
+  const isLuxe = selectedStore === 'luxe-haven'
+
   // Mobile sidebar state
   const [isOpenMobile, setIsOpenMobile] = useState(false)
 
@@ -48,8 +51,9 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('')
   const isSearching = searchQuery !== debouncedSearchQuery
-  const colParam = searchParams.get('col')
-  const [activeFilter, setActiveFilter] = useState(() => (colParam ? Number(colParam) : 'all'))
+
+  const colParam = searchParams.get('collection')
+  const [activeFilter, setActiveFilter] = useState(() => colParam ? Number(colParam) : 'all')
   const [prevColParam, setPrevColParam] = useState(colParam)
 
   if (colParam !== prevColParam) {
@@ -57,9 +61,10 @@ export default function Dashboard() {
     setActiveFilter(colParam ? Number(colParam) : 'all')
   }
 
-  // Data from live Neon database
+  // Data from live database
   const [products, setProducts] = useState([])
   const [collections, setCollections] = useState([])
+  const [storeCategories, setStoreCategories] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Modals state
@@ -88,32 +93,35 @@ export default function Dashboard() {
   // Product Form State
   const [formData, setFormData] = useState({
     name: '',
+    brand: '',
     price: '',
+    originalPrice: '',
     image: '',
     images: [],
     featured: false,
     description: '',
     sizes: ['M'],
     collection_ids: [],
-    category: 'Perfume',
-    volume: '100ml',
-    scent: '',
-    material: '',
-    gemstone: '',
-    frame_shape: 'Aviator',
-    lens_color: 'Black'
+    category: 'perfume-for-women',
+    volume: '100ml / 3.4 FL. OZ.',
+    concentration: 'Eau de Parfum',
+    notes: '',
+    frame_size: 'One Size (52-18-140)',
+    origin: 'Handmade in Italy',
+    specs: '100% UV400 Protection, Italian Acetate'
   })
 
   // Live DB connection state
   const [isDbConnected, setIsDbConnected] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Fetch live products & collections from Neon Database
+  // Fetch live products, collections, & categories
   const loadProducts = useCallback(async () => {
     try {
-      const [prodRes, colRes] = await Promise.all([
+      const [prodRes, colRes, catRes] = await Promise.all([
         fetchProductsFromDb(selectedStore),
-        fetchCollectionsFromDb(selectedStore)
+        isLuxe ? Promise.resolve({ success: true, data: [] }) : fetchCollectionsFromDb(selectedStore),
+        fetchCategoriesFromDb(selectedStore)
       ])
 
       if (prodRes.success && prodRes.data) {
@@ -123,6 +131,9 @@ export default function Dashboard() {
       if (colRes.success && colRes.data) {
         setCollections(colRes.data)
       }
+      if (catRes.success && catRes.data) {
+        setStoreCategories(catRes.data)
+      }
     } catch (err) {
       console.error('Error loading products & collections:', err)
       showToast('Database connection error', 'error')
@@ -130,7 +141,7 @@ export default function Dashboard() {
       setIsSyncing(false)
       setIsLoading(false)
     }
-  }, [selectedStore, showToast])
+  }, [selectedStore, isLuxe, showToast])
 
   useEffect(() => {
     let ignore = false
@@ -163,7 +174,10 @@ export default function Dashboard() {
   // Sync store
   useEffect(() => {
     localStorage.setItem('admin_selected_store', selectedStore)
-  }, [selectedStore])
+    if (selectedStore === 'luxe-haven' && typeof activeFilter === 'number') {
+      setActiveFilter('all')
+    }
+  }, [selectedStore, activeFilter])
 
   // Sync view mode
   useEffect(() => {
@@ -178,7 +192,6 @@ export default function Dashboard() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-
   // Filter products by selected store
   const storeProducts = useMemo(() => {
     return products.filter(p => p.store_id === selectedStore)
@@ -191,7 +204,9 @@ export default function Dashboard() {
   const filteredProducts = useMemo(() => {
     return storeProducts.filter(p => {
       const q = debouncedSearchQuery.toLowerCase()
+      const brand = (p.attributes?.brand || '').toLowerCase()
       const matchesSearch = p.name.toLowerCase().includes(q) ||
+        brand.includes(q) ||
         (p.description && p.description.toLowerCase().includes(q))
 
       if (!matchesSearch) return false
@@ -201,8 +216,12 @@ export default function Dashboard() {
         return (p.collection_ids || []).includes(activeFilter)
       }
       if (typeof activeFilter === 'string' && activeFilter.startsWith('cat:')) {
-        const cat = activeFilter.replace('cat:', '')
-        return p.category_name?.toLowerCase() === cat.toLowerCase()
+        const cat = activeFilter.replace('cat:', '').toLowerCase()
+        return (
+          p.category_slug?.toLowerCase() === cat ||
+          p.category_name?.toLowerCase() === cat ||
+          p.category_name?.toLowerCase().replace(/\s+/g, '-') === cat
+        )
       }
       return true
     })
@@ -213,7 +232,7 @@ export default function Dashboard() {
   const [itemsPerPage, setItemsPerPage] = useState(12)
   const [prevFilterKey, setPrevFilterKey] = useState(() => `${selectedStore}-${activeFilter}-${debouncedSearchQuery}`)
 
-  // Reset pagination on filter or search changes during render (avoids setState in effect)
+  // Reset pagination on filter or search changes during render
   const currentFilterKey = `${selectedStore}-${activeFilter}-${debouncedSearchQuery}`
   if (prevFilterKey !== currentFilterKey) {
     setPrevFilterKey(currentFilterKey)
@@ -233,8 +252,8 @@ export default function Dashboard() {
     const current = products.find(p => p.id === id)
     const nextFeatured = !current?.featured
 
-    // Limit featured up to 10 only
-    if (nextFeatured && featuredCount >= 10) {
+    // Limit featured up to 10 only (strictly for Selyn Dress!)
+    if (!isLuxe && nextFeatured && featuredCount >= 10) {
       showToast('Maximum of 10 featured products allowed for this store.', 'error')
       return
     }
@@ -246,9 +265,14 @@ export default function Dashboard() {
 
     const res = await toggleFeaturedInDb(id, nextFeatured, selectedStore)
     if (res.success) {
-      showToast(nextFeatured ? 'Added to featured items' : 'Removed from featured items', 'success')
+      showToast(
+        nextFeatured
+          ? (isLuxe ? 'Added to bestsellers' : 'Added to featured items')
+          : (isLuxe ? 'Removed from bestsellers' : 'Removed from featured items'),
+        'success'
+      )
     } else {
-      showToast(res.error || 'Failed to update featured status', 'error')
+      showToast(res.error || 'Failed to update status', 'error')
       loadProducts()
     }
   }
@@ -293,54 +317,58 @@ export default function Dashboard() {
     setEditingProduct(null)
     setFormData({
       name: '',
+      brand: '',
       price: '',
+      originalPrice: '',
       image: '',
       images: [],
       featured: false,
       description: '',
       sizes: ['M'],
       collection_ids: [],
-      category: 'Perfume',
-      volume: '100ml',
-      scent: '',
-      material: '',
-      gemstone: '',
-      frame_shape: 'Aviator',
-      lens_color: 'Black'
+      category: isLuxe ? 'perfume-for-women' : 'Perfume',
+      volume: '100ml / 3.4 FL. OZ.',
+      concentration: 'Eau de Parfum',
+      notes: '',
+      frame_size: 'One Size (52-18-140)',
+      origin: 'Handmade in Italy',
+      specs: '100% UV400 Protection, Italian Acetate'
     })
     setIsModalOpen(true)
   }
 
   const handleOpenEditModal = async (listProduct) => {
-  const imgRes = await fetchProductImagesFromDb(listProduct.id, selectedStore)
-  if (!imgRes.success) {
-    showToast('Could not load product images. Please try again.', 'error')
-    return
-  }
-  const fullImages = imgRes.data?.images?.length ? imgRes.data.images : []
-  const product = { ...listProduct, images: fullImages }
+    const imgRes = await fetchProductImagesFromDb(listProduct.id, selectedStore)
+    if (!imgRes.success) {
+      showToast('Could not load product images. Please try again.', 'error')
+      return
+    }
+    const fullImages = imgRes.data?.images?.length ? imgRes.data.images : []
+    const product = { ...listProduct, images: fullImages }
 
-  setEditingProduct(product)
-  const gallery = fullImages.length ? fullImages : (product.image ? [product.image] : [])
-  setFormData({
-    name: product.name,
-    price: product.price,
-    image: product.image || gallery[0] || '',
-    images: gallery,
-    featured: product.featured,
-    description: product.description || '',
-    sizes: product.attributes?.sizes || ['M'],
-    collection_ids: product.collection_ids || [],
-    category: product.category_name || 'Perfume',
-    volume: product.attributes?.volume || '100ml',
-    scent: product.attributes?.scent || '',
-    material: product.attributes?.material || '',
-    gemstone: product.attributes?.gemstone || '',
-    frame_shape: product.attributes?.frame_shape || 'Aviator',
-    lens_color: product.attributes?.lens_color || 'Black'
-  })
-  setIsModalOpen(true)
-}
+    setEditingProduct(product)
+    const gallery = fullImages.length ? fullImages : (product.image ? [product.image] : [])
+    setFormData({
+      name: product.name || '',
+      brand: product.attributes?.brand || '',
+      price: product.price || '',
+      originalPrice: product.attributes?.originalPrice || '',
+      image: product.image || gallery[0] || '',
+      images: gallery,
+      featured: product.featured,
+      description: product.description || '',
+      sizes: product.attributes?.sizes || ['M'],
+      collection_ids: product.collection_ids || [],
+      category: product.category_slug || product.category_name || (isLuxe ? 'perfume-for-women' : 'Perfume'),
+      volume: product.attributes?.volume || '100ml / 3.4 FL. OZ.',
+      concentration: product.attributes?.concentration || 'Eau de Parfum',
+      notes: product.attributes?.notes || '',
+      frame_size: product.attributes?.frame_size || 'One Size (52-18-140)',
+      origin: product.attributes?.origin || 'Handmade in Italy',
+      specs: product.attributes?.specs || '100% UV400 Protection, Italian Acetate'
+    })
+    setIsModalOpen(true)
+  }
 
   const handleSaveProduct = (e) => {
     e.preventDefault()
@@ -355,28 +383,46 @@ export default function Dashboard() {
       return
     }
 
-    // Limit featured up to 10 only
+    // Limit featured up to 10 only (strictly for Selyn Dress!)
     const willBeFeatured = Boolean(formData.featured)
     const wasFeatured = editingProduct ? Boolean(editingProduct.featured) : false
-    if (willBeFeatured && !wasFeatured && featuredCount >= 10) {
+    if (!isLuxe && willBeFeatured && !wasFeatured && featuredCount >= 10) {
       showToast('Maximum of 10 featured products allowed for this store.', 'error')
       return
     }
 
     let attributes = {}
-    if (selectedStore === 'selyn') {
+    let catId = null
+    let categoryName = undefined
+    let categorySlug = undefined
+
+    if (!isLuxe) {
       attributes = { sizes: formData.sizes }
     } else {
-      if (formData.category === 'Perfume') {
-        attributes = { volume: formData.volume, scent: formData.scent }
-      } else if (formData.category === 'Jewelry') {
-        attributes = { material: formData.material, gemstone: formData.gemstone }
-      } else if (formData.category === 'Eyeglasses') {
-        attributes = { frame_shape: formData.frame_shape, lens_color: formData.lens_color }
+      attributes = {
+        brand: formData.brand || '',
+        originalPrice: formData.originalPrice ? Number(formData.originalPrice) : null,
+        volume: formData.volume || '',
+        concentration: formData.concentration || '',
+        notes: formData.notes || '',
+        frame_size: formData.frame_size || '',
+        origin: formData.origin || '',
+        specs: formData.specs || ''
+      }
+
+      const matchedCat = storeCategories.find(c => c.slug === formData.category || c.name === formData.category)
+      if (matchedCat) {
+        catId = matchedCat.id
+        categoryName = matchedCat.name
+        categorySlug = matchedCat.slug
+      } else {
+        categorySlug = formData.category
       }
     }
 
-    const matchedCollections = storeCollections.filter(c => formData.collection_ids.includes(c.id))
+    const matchedCollections = !isLuxe
+      ? storeCollections.filter(c => (formData.collection_ids || []).includes(c.id))
+      : []
 
     const productPayload = {
       store_id: selectedStore,
@@ -386,9 +432,9 @@ export default function Dashboard() {
       images: formData.images.length ? formData.images : [mainImage],
       featured: formData.featured,
       description: formData.description,
-      category_id: null,
+      category_id: catId,
       attributes,
-      collection_ids: formData.collection_ids,
+      collection_ids: !isLuxe ? formData.collection_ids : [],
     }
 
     if (editingProduct) {
@@ -402,9 +448,11 @@ export default function Dashboard() {
             images: formData.images.length ? formData.images : [mainImage],
             featured: formData.featured,
             description: formData.description,
-            category_name: selectedStore === 'luxe-haven' ? formData.category : undefined,
+            category_id: catId,
+            category_name: categoryName || p.category_name,
+            category_slug: categorySlug || p.category_slug,
             attributes,
-            collection_ids: formData.collection_ids,
+            collection_ids: !isLuxe ? formData.collection_ids : [],
             collections: matchedCollections
           }
         }
@@ -430,9 +478,11 @@ export default function Dashboard() {
         images: formData.images.length ? formData.images : [mainImage],
         featured: formData.featured,
         description: formData.description,
-        category_name: selectedStore === 'luxe-haven' ? formData.category : undefined,
+        category_id: catId,
+        category_name: categoryName,
+        category_slug: categorySlug,
         attributes,
-        collection_ids: formData.collection_ids,
+        collection_ids: !isLuxe ? formData.collection_ids : [],
         collections: matchedCollections
       }
       setProducts(prev => [newProduct, ...prev])
@@ -453,88 +503,69 @@ export default function Dashboard() {
   return (
     <div className={`min-h-screen ${isDark ? 'dark' : ''} bg-[#fafafa] dark:bg-[#09090b] text-neutral-900 dark:text-neutral-100 font-['Poppins'] transition-colors duration-200`}>
       
+      {/* ── ONBOARDING TOUR ── */}
+      <OnboardingTour
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        selectedStore={selectedStore}
+      />
+
       {/* ── SIDEBAR ── */}
       <Sidebar
+        isDark={isDark}
+        setIsDark={setIsDark}
+        isOpenMobile={isOpenMobile}
+        setIsOpenMobile={setIsOpenMobile}
         selectedStore={selectedStore}
         onSelectStore={(store) => {
           setSelectedStore(store)
           setActiveFilter('all')
-          setIsLoading(true)
         }}
-        isDark={isDark}
-        onToggleDark={() => setIsDark(!isDark)}
         isDbConnected={isDbConnected}
         isSyncing={isSyncing}
-        isOpenMobile={isOpenMobile}
-        onCloseMobile={() => setIsOpenMobile(false)}
+        onRefresh={() => {
+          setIsSyncing(true)
+          loadProducts()
+        }}
         productsCount={storeProducts.length}
         collectionsCount={storeCollections.length}
-        onStartTour={() => setIsTourOpen(true)}
       />
 
-      {/* ── MAIN CONTENT (OFFSET FOR SIDEBAR) ── */}
-      <div className="lg:pl-64 flex flex-col min-h-screen">
-        
-        {/* Mobile Header Bar */}
-        <header className="lg:hidden sticky top-0 z-20 bg-white/80 dark:bg-[#121215]/80 backdrop-blur-md border-b border-neutral-200/80 dark:border-neutral-800/80 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsOpenMobile(true)}
-              data-tour="mobile-menu-btn"
-              className="p-1.5 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <span className="font-bold text-base tracking-tight">ShopAdmin</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsTourOpen(true)}
-              className="p-1.5 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-1 cursor-pointer"
-              title="Interactive Tour"
-            >
-              <svg className="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="text-xs font-semibold">Tour</span>
-            </button>
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
-              {selectedStore === 'selyn' ? 'Selyn Dress' : 'Luxe Haven II'}
-            </span>
-          </div>
-        </header>
-
-        {/* Main Content Area */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 space-y-6 w-full flex-1">
-
-          {/* Title & Actions */}
+      {/* ── MAIN CONTENT AREA ── */}
+      <main className="lg:pl-64 flex flex-col min-h-screen">
+        <div className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">
+          
+          {/* Header Row */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white m-0">
-                {selectedStore === 'selyn' ? 'Selyn Dress Catalog' : 'Luxe Haven II Products'}
-              </h1>
-              <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                {selectedStore === 'selyn'
-                  ? 'Manage dresses, rental rates, sizes, and collections'
-                  : 'Manage luxury perfume, fine jewelry, and eyewear inventory'}
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-900 dark:text-white m-0">
+                  {isLuxe ? 'Luxe Haven Catalog' : 'Product Catalog'}
+                </h1>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                  {storeProducts.length} items
+                </span>
+              </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                {isLuxe
+                  ? 'Manage authentic perfumes and eyewear catalog'
+                  : 'Manage dress inventory, photos, and sizing'}
               </p>
             </div>
 
             <div className="flex items-center gap-2.5">
-              <Link
-                to="/collections"
-                data-tour="collections-link"
-                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-semibold shadow-xs transition-all no-underline"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-                </svg>
-                <span>Collections ({storeCollections.length})</span>
-              </Link>
+              {!isLuxe && (
+                <Link
+                  to="/collections"
+                  data-tour="collections-link"
+                  className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-semibold shadow-xs transition-all no-underline"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                  </svg>
+                  <span>Collections ({storeCollections.length})</span>
+                </Link>
+              )}
 
               <button
                 type="button"
@@ -568,47 +599,48 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* ── PRODUCTS VIEW (GRID OR LIST) ── */}
+          {/* ── PRODUCTS VIEW (GRID / LIST) ── */}
           {viewMode === 'grid' ? (
             <ProductGrid
-              products={isLoading ? [] : paginatedProducts}
+              products={paginatedProducts}
               isLoading={isLoading}
               selectedStore={selectedStore}
-              searchQuery={debouncedSearchQuery}
+              searchQuery={searchQuery}
               onToggleFeatured={handleToggleFeatured}
               onEdit={handleOpenEditModal}
-              onDelete={setProductToDelete}
+              onDelete={(prod) => setProductToDelete(prod)}
               onOpenAddModal={handleOpenAddModal}
             />
           ) : (
             <ProductTable
-              products={isLoading ? [] : paginatedProducts}
+              products={paginatedProducts}
               isLoading={isLoading}
               selectedStore={selectedStore}
-              searchQuery={debouncedSearchQuery}
+              searchQuery={searchQuery}
               onToggleFeatured={handleToggleFeatured}
               onEdit={handleOpenEditModal}
-              onDelete={setProductToDelete}
+              onDelete={(prod) => setProductToDelete(prod)}
               onOpenAddModal={handleOpenAddModal}
             />
           )}
 
           {/* ── PAGINATION CONTROLS ── */}
-          {!isLoading && filteredProducts.length > 0 && (
+          {totalPages > 1 && (
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
               totalItems={filteredProducts.length}
               itemsPerPage={itemsPerPage}
-              onPageChange={(page) => {
-                setCurrentPage(page)
-                window.scrollTo({ top: 0, behavior: 'smooth' })
+              onPageChange={(page) => setCurrentPage(page)}
+              onItemsPerPageChange={(count) => {
+                setItemsPerPage(count)
+                setCurrentPage(1)
               }}
-              onItemsPerPageChange={setItemsPerPage}
             />
           )}
-        </main>
-      </div>
+
+        </div>
+      </main>
 
       {/* ── ADD / EDIT PRODUCT MODAL ── */}
       <ProductModal
@@ -625,24 +657,16 @@ export default function Dashboard() {
 
       {/* ── DELETE PRODUCT CONFIRMATION MODAL ── */}
       <DeleteProductModal
-        productToDelete={productToDelete}
+        product={productToDelete}
         onClose={() => setProductToDelete(null)}
         onConfirm={confirmDeleteProduct}
       />
 
       {/* ── DELETE COLLECTION CONFIRMATION MODAL ── */}
       <DeleteCollectionModal
-        collectionToDelete={collectionToDelete}
+        collection={collectionToDelete}
         onClose={() => setCollectionToDelete(null)}
         onConfirm={confirmDeleteCollection}
-      />
-
-      {/* ── ONBOARDING TUTORIAL TOUR ── */}
-      <OnboardingTour
-        isOpen={isTourOpen}
-        onClose={() => setIsTourOpen(false)}
-        isOpenMobile={isOpenMobile}
-        setIsOpenMobile={setIsOpenMobile}
       />
     </div>
   )

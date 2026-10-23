@@ -1,4 +1,3 @@
-
 import CustomDropdown from '../common/CustomDropdown'
 
 export default function ProductToolbar({
@@ -15,6 +14,8 @@ export default function ProductToolbar({
   viewMode,
   setViewMode
 }) {
+  const isLuxe = selectedStore === 'luxe-haven'
+
   return (
     <div className="relative z-30 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 p-2.5 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-xs overflow-visible">
       
@@ -44,38 +45,40 @@ export default function ProductToolbar({
           <svg className="w-3.5 h-3.5 text-amber-400 fill-current" viewBox="0 0 20 20">
             <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
           </svg>
-          <span>Featured ({featuredCount}/10)</span>
+          <span>{isLuxe ? `Bestsellers (${featuredCount})` : `Featured (${featuredCount}/10)`}</span>
         </button>
 
-        {/* Collection Dropdown Selector */}
-        <div className="flex items-center gap-1.5">
-          <CustomDropdown
-            value={typeof activeFilter === 'number' || (!isNaN(activeFilter) && activeFilter !== 'all' && !String(activeFilter).startsWith('cat:')) ? activeFilter : 'all'}
-            onChange={(val) => setActiveFilter(val === 'all' ? 'all' : Number(val))}
-            placeholder="Filter Collection"
-            icon={
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-              </svg>
-            }
-            options={[
-              { value: 'all', label: 'All Collections', count: storeProducts.length },
-              ...storeCollections.map(col => ({
-                value: col.id,
-                label: col.name,
-                count: storeProducts.filter(p => (p.collection_ids || []).map(String).includes(String(col.id))).length,
-                icon: (
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
-                )
-              }))
-            ]}
-          />
-        </div>
+        {/* Collection Dropdown Selector (Only for Selyn Dress) */}
+        {!isLuxe && (
+          <div className="flex items-center gap-1.5">
+            <CustomDropdown
+              value={typeof activeFilter === 'number' || (!isNaN(activeFilter) && activeFilter !== 'all' && !String(activeFilter).startsWith('cat:')) ? activeFilter : 'all'}
+              onChange={(val) => setActiveFilter(val === 'all' ? 'all' : Number(val))}
+              placeholder="Filter Collection"
+              icon={
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+              }
+              options={[
+                { value: 'all', label: 'All Collections', count: storeProducts.length },
+                ...storeCollections.map(col => ({
+                  value: col.id,
+                  label: col.name,
+                  count: storeProducts.filter(p => (p.collection_ids || []).map(String).includes(String(col.id))).length,
+                  icon: (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                  )
+                }))
+              ]}
+            />
+          </div>
+        )}
 
         {/* Categories Dropdown for Luxe Haven */}
-        {selectedStore === 'luxe-haven' && (
+        {isLuxe && (
           <CustomDropdown
             value={String(activeFilter).startsWith('cat:') ? activeFilter : 'all'}
             onChange={(val) => setActiveFilter(val)}
@@ -88,34 +91,29 @@ export default function ProductToolbar({
             options={[
               { value: 'all', label: 'All Categories' },
               {
-                value: 'cat:Perfume',
-                label: 'Perfume',
-                count: storeProducts.filter(p => p.category_name?.toLowerCase() === 'perfume').length,
-                icon: (
-                  <svg className="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                  </svg>
-                )
+                value: 'cat:perfume-for-women',
+                label: 'Perfume for Women',
+                count: storeProducts.filter(p => (p.category_slug === 'perfume-for-women') || (p.category_name?.toLowerCase() === 'perfume for women')).length,
               },
               {
-                value: 'cat:Jewelry',
-                label: 'Jewelry',
-                count: storeProducts.filter(p => p.category_name?.toLowerCase() === 'jewelry').length,
-                icon: (
-                  <svg className="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                )
+                value: 'cat:perfume-for-men',
+                label: 'Perfume for Men',
+                count: storeProducts.filter(p => (p.category_slug === 'perfume-for-men') || (p.category_name?.toLowerCase() === 'perfume for men')).length,
               },
               {
-                value: 'cat:Eyeglasses',
-                label: 'Eyeglasses',
-                count: storeProducts.filter(p => p.category_name?.toLowerCase() === 'eyeglasses').length,
-                icon: (
-                  <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.5 12a4.5 4.5 0 009 0 4.5 4.5 0 009 0M2.5 12h19" />
-                  </svg>
-                )
+                value: 'cat:perfume-sets',
+                label: 'Perfume Sets',
+                count: storeProducts.filter(p => (p.category_slug === 'perfume-sets') || (p.category_name?.toLowerCase() === 'perfume sets')).length,
+              },
+              {
+                value: 'cat:eyewear-for-women',
+                label: 'Eyewear for Women',
+                count: storeProducts.filter(p => (p.category_slug === 'eyewear-for-women') || (p.category_name?.toLowerCase() === 'eyewear for women')).length,
+              },
+              {
+                value: 'cat:eyewear-for-men',
+                label: 'Eyewear for Men',
+                count: storeProducts.filter(p => (p.category_slug === 'eyewear-for-men') || (p.category_name?.toLowerCase() === 'eyewear for men')).length,
               }
             ]}
           />
