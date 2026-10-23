@@ -180,7 +180,7 @@ export default function CollectionModal({
             {/* Banner Image Drag & Drop File Upload */}
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Collection Banner Image (Drag & Drop or Click to Upload)
+                Collection Cover Image
               </label>
 
               <input
@@ -192,10 +192,10 @@ export default function CollectionModal({
               />
 
               {formData.banner_image ? (
-                <div className="relative group rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-700 aspect-16/7 bg-neutral-100 dark:bg-neutral-800">
+                <div className="relative group mx-auto w-44 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-700 aspect-[4/5] bg-neutral-100 dark:bg-neutral-800">
                   <img
                     src={formData.banner_image}
-                    alt="Collection Banner"
+                    alt="Collection Cover"
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -234,14 +234,18 @@ export default function CollectionModal({
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
-                      {isReadingImage ? 'Processing Image...' : isDragging ? 'Drop Image Here' : 'Click or Drag & Drop Banner Image'}
+                      {isReadingImage ? 'Processing Image...' : isDragging ? 'Drop Image Here' : 'Click or Drag & Drop Cover Image'}
                     </p>
                     <p className="text-[10px] text-neutral-400 mt-0.5">
-                      Recommended 16:9 or 1200x500 banner (PNG, JPG, WEBP)
+                      Portrait 4:5 works best, e.g. 800x1000 (PNG, JPG, WEBP)
                     </p>
                   </div>
                 </div>
               )}
+
+              <p className="text-[10px] text-neutral-400 mt-1.5">
+                Shown on the storefront's collection cards. Leave empty to use a product photo automatically.
+              </p>
             </div>
 
             </div>{/* Footer Buttons — sticky, never scrolls */}
