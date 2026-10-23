@@ -529,6 +529,7 @@ export default function Dashboard() {
         }}
         productsCount={storeProducts.length}
         collectionsCount={storeCollections.length}
+        categoriesCount={storeCategories.length}
       />
 
       {/* ── MAIN CONTENT AREA ── */}
@@ -554,7 +555,7 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center gap-2.5">
-              {!isLuxe && (
+              {!isLuxe ? (
                 <Link
                   to="/collections"
                   data-tour="collections-link"
@@ -564,6 +565,16 @@ export default function Dashboard() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
                   </svg>
                   <span>Collections ({storeCollections.length})</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/categories"
+                  className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-semibold shadow-xs transition-all no-underline"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                  <span>Categories ({storeCategories.length})</span>
                 </Link>
               )}
 
@@ -651,6 +662,7 @@ export default function Dashboard() {
         setFormData={setFormData}
         selectedStore={selectedStore}
         storeCollections={storeCollections}
+        storeCategories={storeCategories}
         featuredCount={featuredCount}
         onSave={handleSaveProduct}
       />

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '../../context/useToast'
 import { deleteImagesFromStorage } from '../../lib/api'
@@ -62,6 +62,7 @@ export default function ProductModal({
   setFormData,
   selectedStore,
   storeCollections,
+  storeCategories = [],
   featuredCount,
   onSave
 }) {
@@ -193,7 +194,17 @@ export default function ProductModal({
   }
 
   const isLuxe = selectedStore === 'luxe-haven'
-  const isPerfumeCat = !formData.category || formData.category.includes('perfume')
+  const isPerfumeCat = !formData.category || formData.category.includes('perfume') || (!formData.category.includes('eyewear') && !formData.category.includes('glasses'))
+
+  const categoryOptions = useMemo(() => {
+    if (storeCategories && storeCategories.length > 0) {
+      return storeCategories.map(cat => ({
+        value: cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        label: cat.name
+      }))
+    }
+    return LUXE_CATEGORIES
+  }, [storeCategories])
 
   return (
     <AnimatePresence>
@@ -323,10 +334,10 @@ export default function ProductModal({
                     Category *
                   </label>
                   <CustomDropdown
-                    value={formData.category || 'perfume-for-women'}
+                    value={formData.category || (categoryOptions[0]?.value || 'perfume-for-women')}
                     onChange={(val) => setFormData({ ...formData, category: val })}
                     fullWidth
-                    options={LUXE_CATEGORIES}
+                    options={categoryOptions}
                   />
                 </div>
               )}

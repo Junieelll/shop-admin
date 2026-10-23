@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/useAuth'
 
@@ -13,13 +13,25 @@ export default function Sidebar({
   onCloseMobile,
   productsCount = 0,
   collectionsCount = 0,
+  categoriesCount = 0,
   onStartTour
 }) {
   const { user, signOut } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
 
   const isProductsActive = location.pathname === '/' || location.pathname.startsWith('/products')
   const isCollectionsActive = location.pathname.startsWith('/collections')
+  const isCategoriesActive = location.pathname.startsWith('/categories')
+
+  const handleStoreSwitch = (store) => {
+    onSelectStore(store)
+    if (store === 'luxe-haven' && location.pathname.startsWith('/collections')) {
+      navigate('/categories')
+    } else if (store === 'selyn' && location.pathname.startsWith('/categories')) {
+      navigate('/collections')
+    }
+  }
 
   const navContent = (
     <div className="flex flex-col h-full bg-white dark:bg-[#121215] border-r border-neutral-200/80 dark:border-neutral-800/80 p-4 transition-colors">
@@ -60,7 +72,7 @@ export default function Sidebar({
         <div data-tour="store-switcher" className="flex flex-col gap-1 p-1 rounded-2xl bg-neutral-100 dark:bg-neutral-800/60 border border-neutral-200/50 dark:border-neutral-700/50">
           <button
             type="button"
-            onClick={() => onSelectStore('selyn')}
+            onClick={() => handleStoreSwitch('selyn')}
             className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               selectedStore === 'selyn'
                 ? 'bg-black dark:bg-white text-white dark:text-black shadow-xs'
@@ -80,7 +92,7 @@ export default function Sidebar({
 
           <button
             type="button"
-            onClick={() => onSelectStore('luxe-haven')}
+            onClick={() => handleStoreSwitch('luxe-haven')}
             className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               selectedStore === 'luxe-haven'
                 ? 'bg-black dark:bg-white text-white dark:text-black shadow-xs'
@@ -132,31 +144,61 @@ export default function Sidebar({
           )}
         </Link>
 
-        <Link
-          to="/collections"
-          onClick={onCloseMobile}
-          className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all no-underline ${
-            isCollectionsActive
-              ? 'bg-neutral-900 dark:bg-white text-white dark:text-black shadow-xs'
-              : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-black dark:hover:text-white'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-            </svg>
-            <span>Collections</span>
-          </div>
-          {collectionsCount > 0 && (
-            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+        {/* Dynamic: Categories for Luxe Haven, Collections for Selyn Dress */}
+        {selectedStore === 'luxe-haven' ? (
+          <Link
+            to="/categories"
+            onClick={onCloseMobile}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all no-underline ${
+              isCategoriesActive
+                ? 'bg-neutral-900 dark:bg-white text-white dark:text-black shadow-xs'
+                : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-black dark:hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              <span>Categories</span>
+            </div>
+            {categoriesCount > 0 && (
+              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+                isCategoriesActive
+                  ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+              }`}>
+                {categoriesCount}
+              </span>
+            )}
+          </Link>
+        ) : (
+          <Link
+            to="/collections"
+            onClick={onCloseMobile}
+            className={`flex items-center justify-between px-3 py-2.5 rounded-2xl text-xs font-semibold transition-all no-underline ${
               isCollectionsActive
-                ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
-                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
-            }`}>
-              {collectionsCount}
-            </span>
-          )}
-        </Link>
+                ? 'bg-neutral-900 dark:bg-white text-white dark:text-black shadow-xs'
+                : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-black dark:hover:text-white'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span>Collections</span>
+            </div>
+            {collectionsCount > 0 && (
+              <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
+                isCollectionsActive
+                  ? 'bg-white/20 text-white dark:bg-black/20 dark:text-black'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+              }`}>
+                {collectionsCount}
+              </span>
+            )}
+          </Link>
+        )}
+
 
         <Link
           to="/profile"

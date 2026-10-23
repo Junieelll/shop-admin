@@ -7,6 +7,8 @@ import Setup from './pages/Setup'
 import Dashboard from './pages/Dashboard'
 import Collections from './pages/Collections'
 import CollectionProducts from './pages/CollectionProducts'
+import Categories from './pages/Categories'
+import CategoryProducts from './pages/CategoryProducts'
 import Profile from './pages/Profile'
 
 export default function App() {
@@ -21,6 +23,8 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/collections" element={<Collections />} />
               <Route path="/collections/:id" element={<CollectionProducts />} />
+              <Route path="/categories" element={<Categories />} />
+              <Route path="/categories/:id" element={<CategoryProducts />} />
               <Route path="/profile" element={<Profile />} />
             </Route>
           </Routes>

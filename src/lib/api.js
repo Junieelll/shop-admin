@@ -120,20 +120,319 @@ export function notifyCatalogUpdated(storeId = 'luxe-haven') {
 }
 
 /**
- * Fetch categories for a specific store from Turso SQLite
+ * Fetch categories for a specific store from Turso SQLite with image and product counts
  */
 export async function fetchCategoriesFromDb(storeId = 'luxe-haven') {
   try {
     const res = await db.execute({
-      sql: `SELECT id, store_id, name, slug FROM categories WHERE store_id = ? ORDER BY id ASC`,
+      sql: `
+        SELECT 
+          c.id, 
+          c.store_id, 
+          c.name, 
+          c.slug, 
+          c.image,
+          COUNT(p.id) as product_count
+        FROM categories c
+        LEFT JOIN products p ON c.id = p.category_id AND p.store_id = c.store_id
+        WHERE c.store_id = ?
+        GROUP BY c.id
+        ORDER BY c.id ASC
+      `,
       args: [storeId],
     })
-    return { success: true, data: res.rows }
+
+    const rows = res.rows.map(r => ({
+      id: Number(r.id),
+      store_id: r.store_id,
+      name: r.name,
+      slug: r.slug,
+      image: r.image || '',
+      product_count: Number(r.product_count) || 0,
+    }))
+
+    return { success: true, data: rows }
   } catch (err) {
     console.error('Turso SQL Categories Fetch Error:', err)
     return { success: false, error: err.message, data: [] }
   }
 }
+
+/**
+ * Create a new category in Turso SQLite
+ */
+export async function createCategoryInDb(cat, storeId = 'luxe-haven') {
+  try {
+    const name = cat.name || ''
+    const slug = cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    const image = cat.image || null
+
+    const res = await db.execute({
+      sql: `
+        INSERT INTO categories (store_id, name, slug, image)
+        VALUES (?, ?, ?, ?)
+      `,
+      args: [storeId, name, slug, image],
+    })
+
+    const newId = Number(res.lastInsertRowid)
+    notifyCatalogUpdated(storeId)
+    return {
+      success: true,
+      data: {
+        id: newId,
+        store_id: storeId,
+        name,
+        slug,
+        image,
+        product_count: 0,
+      },
+    }
+  } catch (err) {
+    console.error('Turso SQL Category Create Error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Update an existing category in Turso SQLite
+ */
+export async function updateCategoryInDb(cat, storeId = 'luxe-haven') {
+  try {
+    const name = cat.name || ''
+    const slug = cat.slug || cat.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    const image = cat.image || null
+    const id = Number(cat.id)
+
+    // If image changed, clean up previous image from S3 storage
+    if (cat.previousImage && cat.previousImage !== image) {
+      await deleteImagesFromStorage([cat.previousImage])
+    }
+
+    await db.execute({
+      sql: `
+        UPDATE categories
+        SET name = ?, slug = ?, image = ?
+        WHERE id = ? AND store_id = ?
+      `,
+      args: [name, slug, image, id, storeId],
+    })
+
+    notifyCatalogUpdated(storeId)
+    return {
+      success: true,
+      data: {
+        id,
+        store_id: storeId,
+        name,
+        slug,
+        image,
+        product_count: cat.product_count || 0,
+      },
+    }
+  } catch (err) {
+    console.error('Turso SQL Category Update Error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Delete a category from Turso SQLite and clean up its cover image from storage
+ */
+export async function deleteCategoryFromDb(id, storeId = 'luxe-haven', coverImage = null) {
+  try {
+    if (coverImage) {
+      await deleteImagesFromStorage([coverImage])
+    }
+
+    await db.execute({
+      sql: `DELETE FROM categories WHERE id = ? AND store_id = ?`,
+      args: [Number(id), storeId],
+    })
+
+    notifyCatalogUpdated(storeId)
+    return { success: true }
+  } catch (err) {
+    console.error('Turso SQL Category Delete Error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Fetch a single category by ID or slug with product count
+ */
+export async function fetchCategoryByIdFromDb(idOrSlug, storeId = 'luxe-haven') {
+  try {
+    const isNum = !isNaN(Number(idOrSlug)) && Number(idOrSlug) > 0
+    const res = await db.execute({
+      sql: isNum ? `
+        SELECT 
+          c.id, c.store_id, c.name, c.slug, c.image,
+          COUNT(p.id) as product_count
+        FROM categories c
+        LEFT JOIN products p ON c.id = p.category_id AND p.store_id = c.store_id
+        WHERE c.id = ? AND c.store_id = ?
+        GROUP BY c.id
+      ` : `
+        SELECT 
+          c.id, c.store_id, c.name, c.slug, c.image,
+          COUNT(p.id) as product_count
+        FROM categories c
+        LEFT JOIN products p ON (c.id = p.category_id OR c.slug = p.category_slug) AND p.store_id = c.store_id
+        WHERE c.slug = ? AND c.store_id = ?
+        GROUP BY c.id
+      `,
+      args: [isNum ? Number(idOrSlug) : String(idOrSlug), storeId],
+    })
+
+    if (!res.rows || res.rows.length === 0) {
+      return { success: false, error: 'Category not found', data: null }
+    }
+
+    const r = res.rows[0]
+    return {
+      success: true,
+      data: {
+        id: Number(r.id),
+        store_id: r.store_id,
+        name: r.name,
+        slug: r.slug,
+        image: r.image || '',
+        product_count: Number(r.product_count) || 0,
+      }
+    }
+  } catch (err) {
+    console.error('Fetch Category By ID error:', err)
+    return { success: false, error: err.message, data: null }
+  }
+}
+
+/**
+ * Fetch products assigned to a specific category
+ */
+export async function fetchCategoryProductsFromDb(categoryIdOrSlug, storeId = 'luxe-haven') {
+  try {
+    const isNum = !isNaN(Number(categoryIdOrSlug)) && Number(categoryIdOrSlug) > 0
+    const res = await db.execute({
+      sql: isNum ? `
+        SELECT p.id, p.store_id, p.category_id, c.name AS category_name, c.slug AS category_slug,
+               p.name, p.price, p.image, p.images, p.featured, p.description,
+               p.attributes, p.created_at
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE p.store_id = ? AND (p.category_id = ? OR c.id = ?)
+        ORDER BY p.id DESC
+      ` : `
+        SELECT p.id, p.store_id, p.category_id, c.name AS category_name, c.slug AS category_slug,
+               p.name, p.price, p.image, p.images, p.featured, p.description,
+               p.attributes, p.created_at
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE p.store_id = ? AND (c.slug = ? OR p.category_slug = ?)
+        ORDER BY p.id DESC
+      `,
+      args: isNum ? [storeId, Number(categoryIdOrSlug), Number(categoryIdOrSlug)] : [storeId, String(categoryIdOrSlug), String(categoryIdOrSlug)],
+    })
+
+    const products = res.rows.map(r => normalizeProduct(r))
+    return { success: true, data: products }
+  } catch (err) {
+    console.error('Fetch Category Products error:', err)
+    return { success: false, error: err.message, data: [] }
+  }
+}
+
+/**
+ * Assign a product to a category
+ */
+export async function assignProductToCategoryInDb(productId, categoryId, storeId = 'luxe-haven') {
+  try {
+    await db.execute({
+      sql: `UPDATE products SET category_id = ? WHERE id = ? AND store_id = ?`,
+      args: [Number(categoryId), Number(productId), storeId],
+    })
+    notifyCatalogUpdated(storeId)
+    return { success: true }
+  } catch (err) {
+    console.error('Assign product to category error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Remove a product from a category (unassign)
+ */
+export async function removeProductFromCategoryInDb(productId, storeId = 'luxe-haven') {
+  try {
+    await db.execute({
+      sql: `UPDATE products SET category_id = NULL WHERE id = ? AND store_id = ?`,
+      args: [Number(productId), storeId],
+    })
+    notifyCatalogUpdated(storeId)
+    return { success: true }
+  } catch (err) {
+    console.error('Remove product from category error:', err)
+    return { success: false, error: err.message }
+  }
+}
+
+/**
+ * Fetch products eligible to be linked to this category (i.e. products not currently in this category)
+ */
+export async function fetchLinkableCategoryProductsFromDb({
+  storeId = 'luxe-haven',
+  categoryId,
+  search = '',
+  beforeId = null,
+  limit = 20
+}) {
+  try {
+    const conds = [
+      'p.store_id = ?',
+      '(p.category_id IS NULL OR p.category_id != ?)'
+    ]
+    const args = [storeId, Number(categoryId)]
+
+    const q = search.trim()
+    if (q) {
+      conds.push(`p.name LIKE ? ESCAPE '\\'`)
+      args.push(`%${q.replace(/[\\%_]/g, m => '\\' + m)}%`)
+    }
+    if (beforeId != null) {
+      conds.push('p.id < ?')
+      args.push(Number(beforeId))
+    }
+    args.push(limit + 1)
+
+    const res = await db.execute({
+      sql: `
+        SELECT p.id, p.name, p.price, p.image, p.category_id, c.name as category_name
+        FROM products p
+        LEFT JOIN categories c ON c.id = p.category_id
+        WHERE ${conds.join(' AND ')}
+        ORDER BY p.id DESC
+        LIMIT ?
+      `,
+      args,
+    })
+
+    const hasMore = res.rows.length > limit
+    const slice = hasMore ? res.rows.slice(0, limit) : res.rows
+    const data = slice.map(r => ({
+      id: Number(r.id),
+      name: r.name,
+      price: Number(r.price),
+      image: r.image || '',
+      category_name: r.category_name || 'Uncategorized'
+    }))
+
+    return { success: true, data, hasMore }
+  } catch (err) {
+    console.error('Fetch Linkable Category Products error:', err)
+    return { success: false, error: err.message, data: [] }
+  }
+}
+
 
 /**
  * Fetch products directly from Turso SQLite
