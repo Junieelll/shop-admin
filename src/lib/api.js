@@ -80,6 +80,13 @@ function normalizeProduct(p, collectionsMap = {}) {
   }
 
   const linkedCollections = collectionsMap[p.id] || []
+  const hasQuantity = typeof attributes.quantity === 'number' ||
+    (typeof attributes.quantity === 'string' && attributes.quantity.trim() !== '')
+  const parsedQuantity = hasQuantity ? Number(attributes.quantity) : NaN
+  const quantity = !hasQuantity ||
+    !Number.isInteger(parsedQuantity) || parsedQuantity < 0
+    ? null
+    : parsedQuantity
 
   return {
     id: Number(p.id),
@@ -94,6 +101,8 @@ function normalizeProduct(p, collectionsMap = {}) {
     featured: Boolean(p.featured),
     description: p.description || '',
     attributes,
+    quantity,
+    is_sold_out: quantity === 0,
     created_at: p.created_at,
     collection_ids: linkedCollections.map(c => Number(c.id)),
     collections: linkedCollections,
@@ -592,6 +601,7 @@ export async function createProductInDb(product, storeId = 'selyn') {
     })
 
     const created = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : { id: newId, name, price, image }
+    notifyCatalogUpdated(storeId)
     return { success: true, data: created }
   } catch (err) {
     console.error('Turso SQL Create Error:', err)
@@ -655,6 +665,7 @@ export async function updateProductInDb(product, storeId = 'selyn') {
     })
 
     const updated = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : product
+    notifyCatalogUpdated(storeId)
     return { success: true, data: updated }
   } catch (err) {
     console.error('Turso SQL Update Error:', err)

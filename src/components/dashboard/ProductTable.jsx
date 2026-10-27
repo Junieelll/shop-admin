@@ -59,6 +59,7 @@ export default function ProductTable({
             <tr className="border-b border-neutral-200/70 dark:border-neutral-800 text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
               <th className="py-3.5 px-4">Product</th>
               <th className="py-3.5 px-4">Price</th>
+              {isLuxe && <th className="py-3.5 px-4">Stock</th>}
               <th className="py-3.5 px-4">{isLuxe ? 'Specifications' : 'Sizes'}</th>
               <th className="py-3.5 px-4">{isLuxe ? 'Category' : 'Collections'}</th>
               <th className="py-3.5 px-4 text-center">{isLuxe ? 'Bestseller' : 'Featured'}</th>
@@ -73,6 +74,8 @@ export default function ProductTable({
                 const brand = product.attributes?.brand
                 const volume = product.attributes?.volume
                 const concentration = product.attributes?.concentration || product.attributes?.origin
+                const quantity = product.quantity ?? product.attributes?.quantity
+                const isSoldOut = isLuxe && product.is_sold_out === true
 
                 return (
                   <motion.tr
@@ -90,9 +93,16 @@ export default function ProductTable({
                           <img
                             src={product.image}
                             alt={product.name}
-                            className="w-full h-full object-cover"
+                            className={`w-full h-full object-cover ${isSoldOut ? 'grayscale' : ''}`}
                             loading="lazy"
                           />
+                          {isSoldOut && (
+                            <span className="absolute inset-0 flex items-center justify-center bg-white/25">
+                              <span className="rounded-full bg-white/95 px-1.5 py-1 text-[8px] font-bold text-neutral-900">
+                                Sold Out
+                              </span>
+                            </span>
+                          )}
                           {galleryCount > 1 && (
                             <span className="absolute bottom-1 right-1 px-1 rounded text-[9px] font-bold bg-black/70 text-white">
                               {galleryCount}
@@ -119,6 +129,12 @@ export default function ProductTable({
                     <td className="py-3 px-4 font-bold text-neutral-900 dark:text-white text-sm whitespace-nowrap">
                       ₱{Number(product.price).toLocaleString()}
                     </td>
+
+                    {isLuxe && (
+                      <td className={`py-3 px-4 whitespace-nowrap ${isSoldOut ? 'font-semibold text-red-600 dark:text-red-400' : 'text-neutral-600 dark:text-neutral-300'}`}>
+                        {quantity == null ? 'Not set' : isSoldOut ? 'Sold out (0)' : quantity}
+                      </td>
+                    )}
 
                     {/* Sizes or Specs */}
                     <td className="py-3 px-4">

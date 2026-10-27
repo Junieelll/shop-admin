@@ -29,6 +29,13 @@ function normalizeProduct(p, collectionsMap = {}) {
   }
 
   const linkedCollections = collectionsMap[p.id] || []
+  const hasQuantity = typeof attributes.quantity === 'number' ||
+    (typeof attributes.quantity === 'string' && attributes.quantity.trim() !== '')
+  const parsedQuantity = hasQuantity ? Number(attributes.quantity) : NaN
+  const quantity = !hasQuantity ||
+    !Number.isInteger(parsedQuantity) || parsedQuantity < 0
+    ? null
+    : parsedQuantity
 
   return {
     id: Number(p.id),
@@ -42,6 +49,8 @@ function normalizeProduct(p, collectionsMap = {}) {
     featured: Boolean(p.featured),
     description: p.description || '',
     attributes,
+    quantity,
+    is_sold_out: quantity === 0,
     created_at: p.created_at,
     collection_ids: linkedCollections.map(c => Number(c.id)),
     collections: linkedCollections,

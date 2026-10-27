@@ -328,6 +328,28 @@ export default function ProductModal({
                 </div>
               )}
 
+              {isLuxe && (
+                <div className="max-w-xs">
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Available Quantity *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="e.g. 5"
+                    value={formData.quantity ?? ''}
+                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-transparent focus:border-neutral-300 dark:focus:border-neutral-700 outline-none"
+                  />
+                  <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    Set to 0 to mark this product as sold out.
+                  </p>
+                </div>
+              )}
+
               {/* Luxe Haven: Category Selector */}
               {isLuxe && (
                 <div>

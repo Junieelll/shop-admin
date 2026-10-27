@@ -95,6 +95,7 @@ export default function Dashboard() {
     name: '',
     brand: '',
     price: '',
+    quantity: '',
     originalPrice: '',
     image: '',
     images: [],
@@ -319,6 +320,7 @@ export default function Dashboard() {
       name: '',
       brand: '',
       price: '',
+      quantity: '',
       originalPrice: '',
       image: '',
       images: [],
@@ -352,6 +354,7 @@ export default function Dashboard() {
       name: product.name || '',
       brand: product.attributes?.brand || '',
       price: product.price || '',
+      quantity: product.quantity ?? '',
       originalPrice: product.attributes?.originalPrice || '',
       image: product.image || gallery[0] || '',
       images: gallery,
@@ -374,6 +377,16 @@ export default function Dashboard() {
     e.preventDefault()
     if (!formData.name || !formData.price) {
       showToast('Please fill in product name and price.', 'error')
+      return
+    }
+
+    const quantity = Number(formData.quantity)
+    if (isLuxe && (
+      formData.quantity === '' ||
+      !Number.isInteger(quantity) ||
+      quantity < 0
+    )) {
+      showToast('Enter a whole-number stock quantity of 0 or more.', 'error')
       return
     }
 
@@ -401,6 +414,7 @@ export default function Dashboard() {
     } else {
       attributes = {
         brand: formData.brand || '',
+        quantity,
         originalPrice: formData.originalPrice ? Number(formData.originalPrice) : null,
         volume: formData.volume || '',
         concentration: formData.concentration || '',
@@ -428,6 +442,7 @@ export default function Dashboard() {
       store_id: selectedStore,
       name: formData.name,
       price: Number(formData.price),
+      quantity: isLuxe ? quantity : null,
       image: mainImage,
       images: formData.images.length ? formData.images : [mainImage],
       featured: formData.featured,
@@ -444,6 +459,7 @@ export default function Dashboard() {
             ...p,
             name: formData.name,
             price: Number(formData.price),
+            quantity: isLuxe ? quantity : p.quantity,
             image: mainImage,
             images: formData.images.length ? formData.images : [mainImage],
             featured: formData.featured,
@@ -452,6 +468,7 @@ export default function Dashboard() {
             category_name: categoryName || p.category_name,
             category_slug: categorySlug || p.category_slug,
             attributes,
+            is_sold_out: isLuxe ? quantity === 0 : p.is_sold_out,
             collection_ids: !isLuxe ? formData.collection_ids : [],
             collections: matchedCollections
           }
@@ -474,6 +491,7 @@ export default function Dashboard() {
         store_id: selectedStore,
         name: formData.name,
         price: Number(formData.price),
+        quantity: isLuxe ? quantity : null,
         image: mainImage,
         images: formData.images.length ? formData.images : [mainImage],
         featured: formData.featured,
@@ -482,6 +500,7 @@ export default function Dashboard() {
         category_name: categoryName,
         category_slug: categorySlug,
         attributes,
+        is_sold_out: isLuxe ? quantity === 0 : false,
         collection_ids: !isLuxe ? formData.collection_ids : [],
         collections: matchedCollections
       }

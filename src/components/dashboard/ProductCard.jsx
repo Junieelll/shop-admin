@@ -14,6 +14,8 @@ export default function ProductCard({
   const brand = product.attributes?.brand || ''
   const volume = product.attributes?.volume || ''
   const concentration = product.attributes?.concentration || product.attributes?.origin || ''
+  const quantity = product.quantity ?? product.attributes?.quantity
+  const isSoldOut = isLuxe && product.is_sold_out === true
 
   return (
     <motion.div
@@ -30,9 +32,16 @@ export default function ProductCard({
         <img
           src={product.image}
           alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOut ? 'grayscale' : ''}`}
           loading="lazy"
         />
+        {isSoldOut && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/25">
+            <span className="rounded-full bg-white/95 px-3 py-1.5 text-xs sm:text-[13px] font-semibold text-neutral-900 shadow-sm">
+              Sold Out
+            </span>
+          </div>
+        )}
 
         {/* Featured / Bestseller Star Toggle Button */}
         <button
@@ -116,6 +125,11 @@ export default function ProductCard({
         </div>
 
         <div>
+          {isLuxe && (
+            <p className={`text-[10px] font-semibold mb-2 ${isSoldOut ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
+              {quantity == null ? 'Qty not set' : isSoldOut ? 'Sold out · 0 in stock' : `${quantity} in stock`}
+            </p>
+          )}
           {/* Attributes */}
           <div className="flex flex-wrap gap-1 mb-2 sm:mb-3">
             {!isLuxe ? (
