@@ -59,7 +59,7 @@ export default function ProductTable({
             <tr className="border-b border-neutral-200/70 dark:border-neutral-800 text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
               <th className="py-3.5 px-4">Product</th>
               <th className="py-3.5 px-4">Price</th>
-              {isLuxe && <th className="py-3.5 px-4">Stock</th>}
+              {isLuxe && <th className="py-3.5 px-4">Status</th>}
               <th className="py-3.5 px-4">{isLuxe ? 'Specifications' : 'Sizes'}</th>
               <th className="py-3.5 px-4">{isLuxe ? 'Category' : 'Collections'}</th>
               <th className="py-3.5 px-4 text-center">{isLuxe ? 'Bestseller' : 'Featured'}</th>
@@ -74,7 +74,6 @@ export default function ProductTable({
                 const brand = product.attributes?.brand
                 const volume = product.attributes?.volume
                 const concentration = product.attributes?.concentration || product.attributes?.origin
-                const quantity = product.quantity ?? product.attributes?.quantity
                 const isSoldOut = isLuxe && product.is_sold_out === true
 
                 return (
@@ -131,8 +130,17 @@ export default function ProductTable({
                     </td>
 
                     {isLuxe && (
-                      <td className={`py-3 px-4 whitespace-nowrap ${isSoldOut ? 'font-semibold text-red-600 dark:text-red-400' : 'text-neutral-600 dark:text-neutral-300'}`}>
-                        {quantity == null ? 'Not set' : isSoldOut ? 'Sold out (0)' : quantity}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold ${
+                          isSoldOut
+                            ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200/60 dark:border-red-800/60'
+                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            isSoldOut ? 'bg-red-500' : 'bg-emerald-500'
+                          }`} />
+                          {isSoldOut ? 'Sold Out' : 'Available'}
+                        </span>
                       </td>
                     )}
 

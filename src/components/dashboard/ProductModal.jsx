@@ -329,23 +329,40 @@ export default function ProductModal({
               )}
 
               {isLuxe && (
-                <div className="max-w-xs">
-                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Available Quantity *
+                <div>
+                  <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
+                    Availability Status
                   </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    step="1"
-                    inputMode="numeric"
-                    placeholder="e.g. 5"
-                    value={formData.quantity ?? ''}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-xs rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-transparent focus:border-neutral-300 dark:focus:border-neutral-700 outline-none"
-                  />
-                  <p className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">
-                    Set to 0 to mark this product as sold out.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const isCurrentlyAvailable = formData.quantity !== 0 && formData.quantity !== '0'
+                      setFormData({ ...formData, quantity: isCurrentlyAvailable ? 0 : 1 })
+                    }}
+                    className={`relative inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-300 cursor-pointer border ${
+                      formData.quantity !== 0 && formData.quantity !== '0'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+                    }`}
+                  >
+                    {/* Toggle Track */}
+                    <div className={`relative w-9 h-5 rounded-full transition-colors duration-300 ${
+                      formData.quantity !== 0 && formData.quantity !== '0'
+                        ? 'bg-emerald-500'
+                        : 'bg-red-400 dark:bg-red-500'
+                    }`}>
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 ${
+                        formData.quantity !== 0 && formData.quantity !== '0'
+                          ? 'translate-x-[18px]'
+                          : 'translate-x-0.5'
+                      }`} />
+                    </div>
+                    <span>
+                      {formData.quantity !== 0 && formData.quantity !== '0' ? 'Available' : 'Sold Out'}
+                    </span>
+                  </button>
+                  <p className="mt-1.5 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    Toggle to mark this product as available or sold out.
                   </p>
                 </div>
               )}

@@ -320,7 +320,7 @@ export default function Dashboard() {
       name: '',
       brand: '',
       price: '',
-      quantity: '',
+      quantity: 1,
       originalPrice: '',
       image: '',
       images: [],
@@ -380,15 +380,8 @@ export default function Dashboard() {
       return
     }
 
-    const quantity = Number(formData.quantity)
-    if (isLuxe && (
-      formData.quantity === '' ||
-      !Number.isInteger(quantity) ||
-      quantity < 0
-    )) {
-      showToast('Enter a whole-number stock quantity of 0 or more.', 'error')
-      return
-    }
+    const isSoldOut = isLuxe && (formData.quantity === 0 || formData.quantity === '0')
+    const quantity = isLuxe ? (isSoldOut ? 0 : 1) : null
 
     const mainImage = formData.image || formData.images[0]
     if (!mainImage) {
