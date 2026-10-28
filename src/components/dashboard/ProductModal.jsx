@@ -556,10 +556,11 @@ export default function ProductModal({
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[11px] font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-                            Volume / Bottle Size
+                            Volume / Bottle Size *
                           </label>
                           <input
                             type="text"
+                            required
                             placeholder="e.g. 100ml / 3.4 FL. OZ."
                             value={formData.volume || ''}
                             onChange={(e) => setFormData({ ...formData, volume: e.target.value })}

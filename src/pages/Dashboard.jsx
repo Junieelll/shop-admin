@@ -104,8 +104,8 @@ export default function Dashboard() {
     sizes: ['M'],
     collection_ids: [],
     category: 'perfume-for-women',
-    volume: '100ml / 3.4 FL. OZ.',
-    concentration: 'Eau de Parfum',
+    volume: '',
+    concentration: '',
     notes: '',
     frame_size: 'One Size (52-18-140)',
     origin: 'Handmade in Italy',
@@ -329,8 +329,8 @@ export default function Dashboard() {
       sizes: ['M'],
       collection_ids: [],
       category: isLuxe ? 'perfume-for-women' : 'Perfume',
-      volume: '100ml / 3.4 FL. OZ.',
-      concentration: 'Eau de Parfum',
+      volume: '',
+      concentration: '',
       notes: '',
       frame_size: 'One Size (52-18-140)',
       origin: 'Handmade in Italy',
@@ -363,8 +363,8 @@ export default function Dashboard() {
       sizes: product.attributes?.sizes || ['M'],
       collection_ids: product.collection_ids || [],
       category: product.category_slug || product.category_name || (isLuxe ? 'perfume-for-women' : 'Perfume'),
-      volume: product.attributes?.volume || '100ml / 3.4 FL. OZ.',
-      concentration: product.attributes?.concentration || 'Eau de Parfum',
+      volume: product.attributes?.volume || '',
+      concentration: product.attributes?.concentration || '',
       notes: product.attributes?.notes || '',
       frame_size: product.attributes?.frame_size || 'One Size (52-18-140)',
       origin: product.attributes?.origin || 'Handmade in Italy',
@@ -377,6 +377,13 @@ export default function Dashboard() {
     e.preventDefault()
     if (!formData.name || !formData.price) {
       showToast('Please fill in product name and price.', 'error')
+      return
+    }
+
+    const catStr = formData.category || ''
+    const isEyewearCat = catStr.includes('eyewear') || catStr.includes('glasses')
+    if (isLuxe && !isEyewearCat && !String(formData.volume || '').trim()) {
+      showToast('Please enter the volume / bottle size.', 'error')
       return
     }
 
@@ -409,8 +416,8 @@ export default function Dashboard() {
         brand: formData.brand || '',
         quantity,
         originalPrice: formData.originalPrice ? Number(formData.originalPrice) : null,
-        volume: formData.volume || '',
-        concentration: formData.concentration || '',
+        volume: (formData.volume || '').trim(),
+        concentration: (formData.concentration || '').trim(),
         notes: formData.notes || '',
         frame_size: formData.frame_size || '',
         origin: formData.origin || '',
