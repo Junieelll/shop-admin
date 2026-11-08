@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1150.0",
+    "@aws-sdk/client-s3": "^3.1164.0",
     "@libsql/client": "^0.18.0",
     "@neondatabase/neon-js": "^0.8.0-beta",
     "@neondatabase/serverless": "^1.2.0",
@@ -32,5 +32,18 @@
     "eslint-plugin-react-refresh": "^0.5.6",
     "globals": "^17.13.0",
     "vite": "^8.3.0"
-  }
+  },
+  "description": "This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.",
+  "main": "eslint.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Junieelll/shop-admin.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Junieelll/shop-admin/issues"
+  },
+  "homepage": "https://github.com/Junieelll/shop-admin#readme"
 }
