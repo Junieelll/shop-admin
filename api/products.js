@@ -1,4 +1,5 @@
 import { createClient } from '@libsql/client'
+import { requireAdmin } from './_auth.js'
 
 let client
 function getClient() {
@@ -58,13 +59,8 @@ function normalizeProduct(p, collectionsMap = {}) {
 }
 
 export default async function handler(req, res) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end()
-  }
+  // Admin only (same-origin, session cookie)
+  if (!requireAdmin(req, res)) return
 
   const db = getClient()
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)

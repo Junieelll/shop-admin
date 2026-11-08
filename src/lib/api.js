@@ -1,29 +1,62 @@
-// Turso Serverless SQLite Driver — works in browser, edge, and Node.js
-import { createClient } from '@libsql/client/web'
+// Database access for the admin.
+// The browser never talks to Turso directly: every query goes to /api/sql, which checks the
+// admin session cookie and runs the statement with the server-side TURSO_* credentials.
+// `db` keeps the same execute()/batch() shape as the libSQL client, so the rest of this file is unchanged.
 
-const TURSO_URL = import.meta.env.VITE_TURSO_DATABASE_URL || ''
-const TURSO_TOKEN = import.meta.env.VITE_TURSO_AUTH_TOKEN || ''
+async function sqlRequest(payload) {
+  const res = await fetch('/api/sql', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (res.status === 401) throw new Error('Session expired. Please log in again.')
+  if (!res.ok) throw new Error(data.error || `Database request failed (${res.status})`)
+  return data
+}
 
-export const db = TURSO_URL
-  ? createClient({ url: TURSO_URL, authToken: TURSO_TOKEN })
-  : null
+function hydrate(rs) {
+  const rows = rs.rows.map((vals) => {
+    const row = {}
+    rs.columns.forEach((col, i) => {
+      row[col] = vals[i]
+    })
+    return row
+  })
+  return {
+    columns: rs.columns,
+    rows,
+    rowsAffected: rs.rowsAffected,
+    lastInsertRowid: rs.lastInsertRowid,
+  }
+}
+
+function toStatement(stmt) {
+  return typeof stmt === 'string' ? { sql: stmt, args: [] } : { sql: stmt.sql, args: stmt.args || [] }
+}
+
+export const db = {
+  async execute(stmt) {
+    const data = await sqlRequest({ op: 'execute', ...toStatement(stmt) })
+    return hydrate(data)
+  },
+  async batch(statements, mode = 'write') {
+    const data = await sqlRequest({ op: 'batch', mode, statements: statements.map(toStatement) })
+    return data.results.map(hydrate)
+  },
+}
 
 /**
- * Check if a URL belongs to our S3/Neon object storage bucket
- * (skip external URLs, base64 data URIs, and relative paths)
+ * Decide whether a URL should be sent to the server for deletion.
+ * Skips base64 data URIs and relative paths. The server (/api/delete-image) only deletes
+ * objects under our R2 public domain and ignores everything else, so it is safe to pass any remote URL.
  */
 function isS3Url(url) {
   if (!url || typeof url !== 'string') return false
   if (url.startsWith('data:')) return false
   if (url.startsWith('/')) return false
-  try {
-    const endpoint = (import.meta.env.VITE_AWS_ENDPOINT_URL_S3 || '').replace(/\/$/, '')
-    if (endpoint && url.startsWith(endpoint)) return true
-    if (url.includes('.storage.') && url.includes('neon.tech')) return true
-  } catch {
-    // ignore
-  }
-  return false
+  return /^https?:\/\//i.test(url)
 }
 
 /**
