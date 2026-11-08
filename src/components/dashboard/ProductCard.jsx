@@ -14,7 +14,6 @@ export default function ProductCard({
   const brand = product.attributes?.brand || ''
   const volume = product.attributes?.volume || ''
   const concentration = product.attributes?.concentration || product.attributes?.origin || ''
-  const quantity = product.quantity ?? product.attributes?.quantity
   const isSoldOut = isLuxe && product.is_sold_out === true
 
   return (
@@ -126,9 +125,16 @@ export default function ProductCard({
 
         <div>
           {isLuxe && (
-            <p className={`text-[10px] font-semibold mb-2 ${isSoldOut ? 'text-red-600 dark:text-red-400' : 'text-neutral-500 dark:text-neutral-400'}`}>
-              {quantity == null ? 'Qty not set' : isSoldOut ? 'Sold out · 0 in stock' : `${quantity} in stock`}
-            </p>
+            <div className="mb-2">
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold ${
+                isSoldOut
+                  ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200/60 dark:border-red-800/60'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isSoldOut ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                {isSoldOut ? 'Sold Out' : 'Available'}
+              </span>
+            </div>
           )}
           {/* Attributes */}
           <div className="flex flex-wrap gap-1 mb-2 sm:mb-3">
