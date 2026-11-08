@@ -1,14 +1,16 @@
-// Read-only public catalog endpoint (new file — does not change any existing shop-admin API).
+// Read-only public catalog endpoint for Luxe Haven and Selyn.
 // Uses the SECRET Turso variables on the server: TURSO_DATABASE_URL and TURSO_AUTH_TOKEN (no VITE_ prefix).
 import { createClient } from '@libsql/client'
 
 // Only these stores can be read through this endpoint.
-const ALLOWED_STORES = new Set(['luxe-haven'])
+const ALLOWED_STORES = new Set(['luxe-haven', 'selyn'])
 
 // Websites allowed to call this endpoint from a browser. Add your real domains here.
 const ALLOWED_ORIGINS = new Set([
   'https://luxehavenph.com',
   'https://www.luxehavenph.com',
+  'https://selyndressrental.com',
+  'https://www.selyndressrental.com',
   'http://localhost:5173',
 ])
 
@@ -23,28 +25,68 @@ function getClient() {
   return client
 }
 
+// Each resource: a fixed SQL statement + how to build its arguments.
 const QUERIES = {
-  'products-meta': `
-    SELECT COUNT(*) as count,
-           COALESCE(MAX(updated_at), MAX(created_at), '') as last_mod
-    FROM products WHERE store_id = ?`,
-  products: `
-    SELECT p.id, p.store_id, p.category_id,
-           c.name as category_name, c.slug as category_slug,
-           p.name, p.price, p.image, p.images, p.featured,
-           p.description, p.attributes, p.created_at, p.updated_at
-    FROM products p
-    LEFT JOIN categories c ON p.category_id = c.id
-    WHERE p.store_id = ?
-    ORDER BY p.id DESC`,
-  'categories-meta': `
-    SELECT COUNT(*) as count,
-           COALESCE(MAX(id), 0) as max_id,
-           COALESCE(SUM(LENGTH(COALESCE(image, ''))), 0) as img_checksum
-    FROM categories WHERE store_id = ?`,
-  categories: `
-    SELECT id, store_id, name, slug, image
-    FROM categories WHERE store_id = ? ORDER BY id ASC`,
+  'products-meta': {
+    sql: `SELECT COUNT(*) as count,
+                 COALESCE(MAX(updated_at), MAX(created_at), '') as last_mod
+          FROM products WHERE store_id = ?`,
+    args: (store) => [store],
+  },
+  products: {
+    sql: `SELECT p.id, p.store_id, p.category_id,
+                 c.name as category_name, c.slug as category_slug,
+                 p.name, p.price, p.image, p.images, p.featured,
+                 p.description, p.attributes, p.created_at, p.updated_at
+          FROM products p
+          LEFT JOIN categories c ON p.category_id = c.id
+          WHERE p.store_id = ?
+          ORDER BY p.id DESC`,
+    args: (store) => [store],
+  },
+  'product-collections': {
+    sql: `SELECT pc.product_id, col.id, col.name, col.slug
+          FROM product_collections pc
+          JOIN collections col ON pc.collection_id = col.id
+          WHERE col.store_id = ?`,
+    args: (store) => [store],
+  },
+  'product-images': {
+    sql: `SELECT image, images FROM products WHERE id = ? AND store_id = ?`,
+    args: (store, id) => [id, store],
+    needsId: true,
+  },
+  'categories-meta': {
+    sql: `SELECT COUNT(*) as count,
+                 COALESCE(MAX(id), 0) as max_id,
+                 COALESCE(SUM(LENGTH(COALESCE(image, ''))), 0) as img_checksum
+          FROM categories WHERE store_id = ?`,
+    args: (store) => [store],
+  },
+  categories: {
+    sql: `SELECT id, store_id, name, slug, image
+          FROM categories WHERE store_id = ? ORDER BY id ASC`,
+    args: (store) => [store],
+  },
+  collections: {
+    sql: `SELECT c.id, c.store_id, c.name, c.slug, c.description, c.banner_image,
+                 COUNT(pc.product_id) as product_count
+          FROM collections c
+          LEFT JOIN product_collections pc ON c.id = pc.collection_id
+          WHERE c.store_id = ?
+          GROUP BY c.id
+          ORDER BY c.id ASC`,
+    args: (store) => [store],
+  },
+  'collections-light': {
+    sql: `SELECT id, store_id, name, slug, description, banner_image
+          FROM collections WHERE store_id = ? ORDER BY id ASC`,
+    args: (store) => [store],
+  },
+  version: {
+    sql: `SELECT value FROM catalog_meta WHERE key = 'version'`,
+    args: () => [],
+  },
 }
 
 export default async function handler(req, res) {
@@ -65,8 +107,15 @@ export default async function handler(req, res) {
   if (!ALLOWED_STORES.has(store)) return res.status(400).json({ error: 'Unknown store' })
   if (!Object.hasOwn(QUERIES, resource)) return res.status(400).json({ error: 'Unknown resource' })
 
+  const q = QUERIES[resource]
+  let id = null
+  if (q.needsId) {
+    id = Number(url.searchParams.get('id'))
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid id' })
+  }
+
   try {
-    const result = await getClient().execute({ sql: QUERIES[resource], args: [store] })
+    const result = await getClient().execute({ sql: q.sql, args: q.args(store, id) })
     const rows = result.rows.map(row =>
       Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
     )
