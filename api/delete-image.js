@@ -1,5 +1,6 @@
 import { S3Client, DeleteObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { requireAdmin } from './_auth.js'
+import { variantKeys } from './_images.js'
 
 let s3Client
 
@@ -54,7 +55,13 @@ export default async function handler(req, res) {
     if (Array.isArray(keys)) allKeys.push(...keys.filter(Boolean))
 
     // Only allow deleting inside products/
-    const safeKeys = allKeys.filter((k) => k.startsWith('products/'))
+    const originals = allKeys.filter((k) => k.startsWith('products/'))
+
+    // Also remove the resized copies (thumb/large) so they don't pile up as orphans
+    const safeKeys = [...new Set(originals.flatMap((k) => {
+      const v = variantKeys(k)
+      return v ? [k, v.thumb, v.large] : [k]
+    }))]
 
     if (safeKeys.length === 0) {
       // Nothing deletable (e.g. only old Neon URLs). Not an error for the admin UI.
