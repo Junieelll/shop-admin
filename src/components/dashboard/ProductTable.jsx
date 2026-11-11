@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { thumbUrl, fallbackToOriginal } from '../../lib/imageUrl'
 
 export default function ProductTable({
   products,
@@ -70,7 +71,7 @@ export default function ProductTable({
             <AnimatePresence>
               {products.map((product) => {
                 const sizes = product.attributes?.sizes || []
-                const galleryCount = (product.images || []).length
+                const galleryCount = product.image_count ?? (product.images || []).length
                 const brand = product.attributes?.brand
                 const volume = product.attributes?.volume
                 const concentration = product.attributes?.concentration || product.attributes?.origin
@@ -90,10 +91,12 @@ export default function ProductTable({
                       <div className="flex items-center gap-3">
                         <div className="relative w-11 h-14 rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 shrink-0">
                           <img
-                            src={product.image}
+                            src={thumbUrl(product.image)}
+                            onError={fallbackToOriginal(product.image)}
                             alt={product.name}
                             className={`w-full h-full object-cover ${isSoldOut ? 'grayscale' : ''}`}
                             loading="lazy"
+                            decoding="async"
                           />
                           {isSoldOut && (
                             <span className="absolute inset-0 flex items-center justify-center bg-white/25">

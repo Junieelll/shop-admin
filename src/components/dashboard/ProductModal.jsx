@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useToast } from '../../context/useToast'
 import { deleteImagesFromStorage } from '../../lib/api'
 import CustomDropdown from '../common/CustomDropdown'
+import { thumbUrl, fallbackToOriginal } from '../../lib/imageUrl'
 
 const AVAILABLE_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'Free Size']
 
@@ -462,8 +463,11 @@ export default function ProductModal({
                             }`}
                           >
                             <img
-                              src={imgUrl}
+                              src={thumbUrl(imgUrl)}
+                              onError={fallbackToOriginal(imgUrl)}
                               alt={`Photo ${idx + 1}`}
+                              loading="lazy"
+                              decoding="async"
                               className="w-full h-full object-cover"
                             />
                             <button

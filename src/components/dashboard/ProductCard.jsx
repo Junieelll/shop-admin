@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { thumbUrl, fallbackToOriginal } from '../../lib/imageUrl'
 
 export default function ProductCard({
   product,
@@ -10,7 +11,7 @@ export default function ProductCard({
 }) {
   const isLuxe = selectedStore === 'luxe-haven'
   const sizes = product.attributes?.sizes || []
-  const galleryCount = (product.images || []).length
+  const galleryCount = product.image_count ?? (product.images || []).length
   const brand = product.attributes?.brand || ''
   const volume = product.attributes?.volume || ''
   const concentration = product.attributes?.concentration || product.attributes?.origin || ''
@@ -29,10 +30,12 @@ export default function ProductCard({
       {/* Image Container with Badges */}
       <div className="relative aspect-4/5 w-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
         <img
-          src={product.image}
+          src={thumbUrl(product.image)}
+          onError={fallbackToOriginal(product.image)}
           alt={product.name}
           className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${isSoldOut ? 'grayscale' : ''}`}
           loading="lazy"
+          decoding="async"
         />
         {isSoldOut && (
           <div className="absolute inset-0 flex items-center justify-center bg-white/25">

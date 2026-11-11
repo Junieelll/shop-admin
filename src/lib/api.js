@@ -131,6 +131,8 @@ function normalizeProduct(p, collectionsMap = {}) {
     price: Number(p.price) || 0,
     image: p.image || '',
     images: Array.isArray(images) && images.length ? images : (p.image ? [p.image] : []),
+    // Number of photos. The dashboard list skips the heavy `images` column and sends this instead.
+    image_count: Number(p.image_count) || (Array.isArray(images) ? images.length : 0) || (p.image ? 1 : 0),
     featured: Boolean(p.featured),
     description: p.description || '',
     attributes,
@@ -480,8 +482,13 @@ export async function fetchLinkableCategoryProductsFromDb({
  * Fetch products directly from Turso SQLite
  * OPTIMIZED: Skips collection queries for stores without collections (e.g. luxe-haven)
  */
-export async function fetchProductsFromDb(storeId = 'selyn') {
+export async function fetchProductsFromDb(storeId = 'selyn', { withImages = true } = {}) {
   try {
+    // The dashboard list doesn't need every photo URL (the edit modal loads them for one product),
+    // so it can ask for just the photo count. This keeps the response much smaller.
+    const imagesCol = withImages
+      ? 'p.images,'
+      : 'CASE WHEN json_valid(p.images) THEN json_array_length(p.images) ELSE 1 END AS image_count,'
     if (storeId === 'luxe-haven') {
       const productsRes = await db.execute({
         sql: `
@@ -494,7 +501,7 @@ export async function fetchProductsFromDb(storeId = 'selyn') {
             p.name,
             p.price,
             p.image,
-            p.images,
+            ${imagesCol}
             p.featured,
             p.description,
             p.attributes,
@@ -523,7 +530,7 @@ export async function fetchProductsFromDb(storeId = 'selyn') {
             p.name,
             p.price,
             p.image,
-            p.images,
+            ${imagesCol}
             p.featured,
             p.description,
             p.attributes,

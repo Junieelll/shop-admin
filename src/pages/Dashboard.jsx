@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useToast } from '../context/useToast'
 import Sidebar from '../components/Sidebar'
@@ -21,6 +21,7 @@ import {
   fetchCollectionsFromDb,
   deleteCollectionFromDb
 } from '../lib/api'
+import { readStoreCache, writeStoreCache } from '../lib/catalogCache'
 
 export default function Dashboard() {
   const { showToast } = useToast()
@@ -66,6 +67,8 @@ export default function Dashboard() {
   const [collections, setCollections] = useState([])
   const [storeCategories, setStoreCategories] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [dataStore, setDataStore] = useState(null)   // which store the data in `products` belongs to
+  const [failedStore, setFailedStore] = useState(null) // a store whose first load failed (stops the skeleton)
 
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -116,49 +119,87 @@ export default function Dashboard() {
   const [isDbConnected, setIsDbConnected] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
 
-  // Fetch live products, collections, & categories
-  const loadProducts = useCallback(async () => {
-    try {
-      const [prodRes, colRes, catRes] = await Promise.all([
-        fetchProductsFromDb(selectedStore),
-        isLuxe ? Promise.resolve({ success: true, data: [] }) : fetchCollectionsFromDb(selectedStore),
-        fetchCategoriesFromDb(selectedStore)
-      ])
+  // Fetch live products, collections & categories.
+  // Each result is applied as soon as it arrives (products don't wait for the other two),
+  // and an answer that arrives after the store was switched is ignored.
+  const loadSeqRef = useRef(0)
+  const freshSeqRef = useRef(0) // the newest load whose products have arrived
 
-      if (prodRes.success && prodRes.data) {
-        setProducts(prodRes.data)
-        setIsDbConnected(true)
-      }
-      if (colRes.success && colRes.data) {
-        setCollections(colRes.data)
-      }
-      if (catRes.success && catRes.data) {
-        setStoreCategories(catRes.data)
-      }
+  const loadProducts = useCallback(async () => {
+    const store = selectedStore
+    const seq = ++loadSeqRef.current
+    const isCurrent = () => seq === loadSeqRef.current
+
+    try {
+      const productsReq = fetchProductsFromDb(store, { withImages: false }).then((res) => {
+        if (!isCurrent()) return
+        if (res.success && res.data) {
+          freshSeqRef.current = seq
+          setProducts(res.data)
+          setDataStore(store)
+          setFailedStore(null)
+          setIsDbConnected(true)
+        } else {
+          setFailedStore(store)
+          showToast('Could not load products. Check your connection.', 'error')
+        }
+      })
+      const collectionsReq = (isLuxe
+        ? Promise.resolve({ success: true, data: [] })
+        : fetchCollectionsFromDb(store)
+      ).then((res) => {
+        if (isCurrent() && res.success && res.data) setCollections(res.data)
+      })
+      const categoriesReq = fetchCategoriesFromDb(store).then((res) => {
+        if (isCurrent() && res.success && res.data) setStoreCategories(res.data)
+      })
+
+      await Promise.all([productsReq, collectionsReq, categoriesReq])
     } catch (err) {
       console.error('Error loading products & collections:', err)
       showToast('Database connection error', 'error')
     } finally {
-      setIsSyncing(false)
-      setIsLoading(false)
+      if (isCurrent()) {
+        setIsSyncing(false)
+        setIsLoading(false)
+      }
     }
   }, [selectedStore, isLuxe, showToast])
 
   useEffect(() => {
-    let ignore = false
-
-    const run = async () => {
-      if (!ignore) {
-        await loadProducts()
-      }
-    }
-
-    run()
-
-    return () => {
-      ignore = true
-    }
+    loadProducts()
   }, [loadProducts])
+
+  // Show the remembered copy of this store right away while the fresh data loads.
+  // (Defined after the load effect on purpose: it needs to see that load's sequence number.)
+  useEffect(() => {
+    let cancelled = false
+    const mySeq = loadSeqRef.current
+    readStoreCache(selectedStore).then((cached) => {
+      if (cancelled || !cached) return
+      if (freshSeqRef.current >= mySeq) return // fresh data already arrived, don't overwrite it
+      setProducts(cached.products)
+      setCollections(cached.collections)
+      setStoreCategories(cached.categories)
+      setDataStore(selectedStore)
+      setIsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedStore])
+
+  // Remember the latest data (including quick edits like starring or deleting) for the next visit.
+  useEffect(() => {
+    if (dataStore !== selectedStore || products.length === 0) return
+    const timer = setTimeout(() => {
+      writeStoreCache(dataStore, { products, collections, categories: storeCategories })
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [dataStore, selectedStore, products, collections, storeCategories])
+
+  // Skeleton only while there is nothing to show for this store yet
+  const showSkeleton = (isLoading || dataStore !== selectedStore) && failedStore !== selectedStore
 
   // Sync theme
   useEffect(() => {
@@ -462,6 +503,7 @@ export default function Dashboard() {
             quantity: isLuxe ? quantity : p.quantity,
             image: mainImage,
             images: formData.images.length ? formData.images : [mainImage],
+            image_count: formData.images.length || 1,
             featured: formData.featured,
             description: formData.description,
             category_id: catId,
@@ -494,6 +536,7 @@ export default function Dashboard() {
         quantity: isLuxe ? quantity : null,
         image: mainImage,
         images: formData.images.length ? formData.images : [mainImage],
+        image_count: formData.images.length || 1,
         featured: formData.featured,
         description: formData.description,
         category_id: catId,
@@ -633,7 +676,7 @@ export default function Dashboard() {
           {viewMode === 'grid' ? (
             <ProductGrid
               products={paginatedProducts}
-              isLoading={isLoading}
+              isLoading={showSkeleton}
               selectedStore={selectedStore}
               searchQuery={searchQuery}
               onToggleFeatured={handleToggleFeatured}
@@ -644,7 +687,7 @@ export default function Dashboard() {
           ) : (
             <ProductTable
               products={paginatedProducts}
-              isLoading={isLoading}
+              isLoading={showSkeleton}
               selectedStore={selectedStore}
               searchQuery={searchQuery}
               onToggleFeatured={handleToggleFeatured}
