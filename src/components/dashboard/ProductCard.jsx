@@ -121,9 +121,11 @@ export default function ProductCard({
             </div>
           </div>
 
-          <p className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 sm:line-clamp-2 leading-relaxed mb-2 sm:mb-3">
-            {product.description || 'No description available'}
-          </p>
+          {product.description && (
+            <p className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1 sm:line-clamp-2 leading-relaxed mb-2 sm:mb-3">
+              {product.description}
+            </p>
+          )}
         </div>
 
         <div>
