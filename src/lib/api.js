@@ -489,6 +489,9 @@ export async function fetchProductsFromDb(storeId = 'selyn', { withImages = true
     const imagesCol = withImages
       ? 'p.images,'
       : 'CASE WHEN json_valid(p.images) THEN json_array_length(p.images) ELSE 1 END AS image_count,'
+    const imageCol = withImages
+      ? 'p.image,'
+      : "CASE WHEN p.image LIKE 'data:image/%' THEN '' ELSE p.image END AS image,"
     if (storeId === 'luxe-haven') {
       const productsRes = await db.execute({
         sql: `
@@ -500,7 +503,7 @@ export async function fetchProductsFromDb(storeId = 'selyn', { withImages = true
             c.slug as category_slug,
             p.name,
             p.price,
-            p.image,
+            ${imageCol}
             ${imagesCol}
             p.featured,
             p.description,
@@ -529,7 +532,7 @@ export async function fetchProductsFromDb(storeId = 'selyn', { withImages = true
             c.slug as category_slug,
             p.name,
             p.price,
-            p.image,
+            ${imageCol}
             ${imagesCol}
             p.featured,
             p.description,

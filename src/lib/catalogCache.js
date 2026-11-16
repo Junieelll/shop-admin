@@ -3,7 +3,7 @@
 // Kept in IndexedDB (hundreds of MB available) with an in-memory copy for fast repeat reads.
 const DB_NAME = 'shop-admin-cache'
 const STORE = 'kv'
-const SCHEMA = 1 // bump when the shape of the cached data changes; old entries are ignored
+const SCHEMA = 2 // bump when the shape of the cached data changes; old entries are ignored
 
 const memory = new Map()
 
