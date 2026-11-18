@@ -120,10 +120,11 @@ export default async function handler(req, res) {
       Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
     )
     // Version checks must always be fresh so the storefront detects changes instantly.
-    // Everything else is cached at Vercel's edge to protect your Turso read quota from bots.
+    // Everything else is cached at Vercel's edge to protect your Turso read quota and Fast Origin Transfer limits.
+    // Safe to cache long because queries carry &v={version} which automatically busts the cache on updates.
     const cacheHeader = resource === 'version'
       ? 'no-store'
-      : 'public, s-maxage=30, stale-while-revalidate=120'
+      : 'public, s-maxage=86400, stale-while-revalidate=604800'
     res.setHeader('Cache-Control', cacheHeader)
     return res.status(200).json({ rows })
   } catch (err) {
