@@ -90,8 +90,16 @@ export async function deleteImagesFromStorage(imageUrls = []) {
 /**
  * Alias used by collection functions to signal catalog changes
  */
-async function touchCatalogVersion() {
-  notifyCatalogUpdated()
+async function touchCatalogVersion(storeId) {
+  try {
+    await db.execute({
+      sql: `INSERT OR REPLACE INTO catalog_meta (key, value) VALUES ('version', ?)`,
+      args: [String(Date.now())],
+    })
+  } catch (err) {
+    console.warn('catalog version bump failed:', err)
+  }
+  notifyCatalogUpdated(storeId)
 }
 
 /**
@@ -220,7 +228,7 @@ export async function createCategoryInDb(cat, storeId = 'luxe-haven') {
     })
 
     const newId = Number(res.lastInsertRowid)
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return {
       success: true,
       data: {
@@ -262,7 +270,7 @@ export async function updateCategoryInDb(cat, storeId = 'luxe-haven') {
       args: [name, slug, image, id, storeId],
     })
 
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return {
       success: true,
       data: {
@@ -294,7 +302,7 @@ export async function deleteCategoryFromDb(id, storeId = 'luxe-haven', coverImag
       args: [Number(id), storeId],
     })
 
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return { success: true }
   } catch (err) {
     console.error('Turso SQL Category Delete Error:', err)
@@ -395,7 +403,7 @@ export async function assignProductToCategoryInDb(productId, categoryId, storeId
       sql: `UPDATE products SET category_id = ? WHERE id = ? AND store_id = ?`,
       args: [Number(categoryId), Number(productId), storeId],
     })
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return { success: true }
   } catch (err) {
     console.error('Assign product to category error:', err)
@@ -412,7 +420,7 @@ export async function removeProductFromCategoryInDb(productId, storeId = 'luxe-h
       sql: `UPDATE products SET category_id = NULL WHERE id = ? AND store_id = ?`,
       args: [Number(productId), storeId],
     })
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return { success: true }
   } catch (err) {
     console.error('Remove product from category error:', err)
@@ -644,7 +652,7 @@ export async function createProductInDb(product, storeId = 'selyn') {
     })
 
     const created = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : { id: newId, name, price, image }
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return { success: true, data: created }
   } catch (err) {
     console.error('Turso SQL Create Error:', err)
@@ -708,7 +716,7 @@ export async function updateProductInDb(product, storeId = 'selyn') {
     })
 
     const updated = fetchRes.rows[0] ? normalizeProduct(fetchRes.rows[0]) : product
-    notifyCatalogUpdated(storeId)
+    await touchCatalogVersion(storeId)
     return { success: true, data: updated }
   } catch (err) {
     console.error('Turso SQL Update Error:', err)
@@ -730,6 +738,7 @@ export async function toggleFeaturedInDb(id, featured, storeId = 'selyn') {
       `,
       args: [val, Number(id), storeId],
     })
+    await touchCatalogVersion(storeId)
     return { success: true, data: { id: Number(id), featured: Boolean(featured) } }
   } catch (err) {
     console.error('Turso SQL Toggle Featured Error:', err)
@@ -774,6 +783,7 @@ export async function deleteProductFromDb(id, storeId = 'selyn') {
       }
     }
 
+    await touchCatalogVersion(storeId)
     return { success: true }
   } catch (err) {
     console.error('Turso SQL Delete Error:', err)

@@ -119,8 +119,12 @@ export default async function handler(req, res) {
     const rows = result.rows.map(row =>
       Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
     )
-    // Cached at Vercel's edge for a short time: protects your Turso read quota from bots.
-    res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120')
+    // Version checks must always be fresh so the storefront detects changes instantly.
+    // Everything else is cached at Vercel's edge to protect your Turso read quota from bots.
+    const cacheHeader = resource === 'version'
+      ? 'no-store'
+      : 'public, s-maxage=30, stale-while-revalidate=120'
+    res.setHeader('Cache-Control', cacheHeader)
     return res.status(200).json({ rows })
   } catch (err) {
     console.error('Catalog API error:', err)
