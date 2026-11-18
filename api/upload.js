@@ -80,7 +80,11 @@ export default async function handler(req, res) {
       console.warn('Image resize skipped:', resizeErr)
     }
 
-    const publicUrl = `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`
+    const rawPublicUrl = (process.env.R2_PUBLIC_URL || '').trim().replace(/\/$/, '')
+    const publicBase = rawPublicUrl.startsWith('http://') || rawPublicUrl.startsWith('https://')
+      ? rawPublicUrl
+      : (rawPublicUrl ? `https://${rawPublicUrl}` : '')
+    const publicUrl = `${publicBase}/${key}`
 
     return res.status(200).json({ success: true, url: publicUrl, key, variants })
   } catch (error) {

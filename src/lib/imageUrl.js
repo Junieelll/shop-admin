@@ -7,7 +7,7 @@
 const PRODUCTS_BASE = 'https://cdn.luxehavenph.com/products/'
 const CDN_PRODUCTS_PREFIX = /^(?:(?:https?:)?\/\/)?\/?cdn\.luxehavenph\.com\/products\//i
 
-function normalizeImageUrl(src) {
+export function normalizeImageUrl(src) {
   if (typeof src !== 'string') return src
   const value = src.trim()
   return CDN_PRODUCTS_PREFIX.test(value)

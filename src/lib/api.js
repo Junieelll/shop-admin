@@ -1,3 +1,5 @@
+import { normalizeImageUrl } from './imageUrl'
+
 // Database access for the admin.
 // The browser never talks to Turso directly: every query goes to /api/sql, which checks the
 // admin session cookie and runs the statement with the server-side TURSO_* credentials.
@@ -113,6 +115,9 @@ function normalizeProduct(p, collectionsMap = {}) {
     images = p.images ? [p.images] : []
   }
 
+  images = Array.isArray(images) ? images.map(normalizeImageUrl) : []
+  const primaryImage = normalizeImageUrl(p.image || '')
+
   let attributes = {}
   try {
     attributes = typeof p.attributes === 'string' ? JSON.parse(p.attributes) : (p.attributes || {})
@@ -137,8 +142,8 @@ function normalizeProduct(p, collectionsMap = {}) {
     category_slug: p.category_slug || null,
     name: p.name || '',
     price: Number(p.price) || 0,
-    image: p.image || '',
-    images: Array.isArray(images) && images.length ? images : (p.image ? [p.image] : []),
+    image: primaryImage,
+    images: images.length ? images : (primaryImage ? [primaryImage] : []),
     // Number of photos. The dashboard list skips the heavy `images` column and sends this instead.
     image_count: Number(p.image_count) || (Array.isArray(images) ? images.length : 0) || (p.image ? 1 : 0),
     featured: Boolean(p.featured),
@@ -614,8 +619,9 @@ export async function createProductInDb(product, storeId = 'selyn') {
   try {
     const name = product.name || ''
     const price = Number(product.price) || 0
-    const image = product.image || ''
-    const images = JSON.stringify(product.images?.length ? product.images : [image])
+    const image = normalizeImageUrl(product.image || '')
+    const cleanImages = (product.images?.length ? product.images : [image]).map(normalizeImageUrl)
+    const images = JSON.stringify(cleanImages)
     const featured = product.featured ? 1 : 0
     const description = product.description || ''
     const attributes = JSON.stringify(product.attributes || {})
@@ -668,8 +674,9 @@ export async function updateProductInDb(product, storeId = 'selyn') {
   try {
     const name = product.name || ''
     const price = Number(product.price) || 0
-    const image = product.image || ''
-    const images = JSON.stringify(product.images?.length ? product.images : [image])
+    const image = normalizeImageUrl(product.image || '')
+    const cleanImages = (product.images?.length ? product.images : [image]).map(normalizeImageUrl)
+    const images = JSON.stringify(cleanImages)
     const featured = product.featured ? 1 : 0
     const description = product.description || ''
     const attributes = JSON.stringify(product.attributes || {})
